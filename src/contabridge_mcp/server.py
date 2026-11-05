@@ -220,8 +220,8 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
         res = await asyncio.to_thread(n43.parse, text)
         n43_errors = [i for i in res.issues if i.get("severity") == "error"]
         suspense = suspense_account.strip() or "555".ljust(len(bank_account.strip()), "0")
-        entries, stats = bank.movements_to_entries(res, bank_account, parsed_rules, suspense, bank_accounts,
-                                                   use_value_date)
+        entries, stats = await asyncio.to_thread(bank.movements_to_entries, res, bank_account, parsed_rules,
+                                                 suspense, bank_accounts, use_value_date)
         if not entries:
             raise journal.JournalError("el extracto no contiene movimientos")
         entries = _prepare(entries, account_digits, account_split, None, start_entry_number or 1)

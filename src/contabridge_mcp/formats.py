@@ -408,24 +408,43 @@ def detect(text: str) -> str:
         return "a3"
     if all(ln.count(";") >= 100 for ln in lines):
         return "contaplus_csv"
-    first = lines[0]
-    if len(first) >= _CP_OFF["EuroHaber"][1] and first[:6].strip().isdigit() and first[6:14].isdigit() \
-            and first.count(";") < 2 and first.count(",") < 2:
+    if all(_looks_cp_ascii(ln) for ln in lines):
         return "contaplus_ascii"
     return "csv"
 
 
+_CP_AMOUNT = re.compile(r"^ *-?\d+\.\d{2}$")
+
+
+def _looks_cp_ascii(ln: str) -> bool:
+    """Fixed-width ContaPlus record: numeric Asien and Fecha, and amounts where EuroDebe/EuroHaber sit.
+
+    Checked by position, so concepts full of ';' or ',' do not make it look like a CSV.
+    """
+    (d0, d1), (h0, h1) = _CP_OFF["EuroDebe"], _CP_OFF["EuroHaber"]
+    return (len(ln) >= h1 and ln[:6].strip().isdigit() and ln[6:14].isdigit()
+            and bool(_CP_AMOUNT.match(ln[d0:d1])) and bool(_CP_AMOUNT.match(ln[h0:h1])))
+
+
 def read(text: str, fmt: str, rep: Report, column_map: dict[str, str] | None = None,
          delimiter: str = "") -> tuple[list[Entry], str]:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")  # old Mac / mixed line endings
     fmt = detect(text) if fmt in ("", "auto") else fmt
+    try:
+        return _read(text, fmt, rep, column_map, delimiter), fmt
+    except csv.Error as exc:
+        raise JournalError(f"CSV mal formado: {exc}") from exc
+
+
+def _read(text: str, fmt: str, rep: Report, column_map: dict[str, str] | None, delimiter: str) -> list[Entry]:
     if fmt == "a3":
-        return read_a3(text, rep), fmt
+        return read_a3(text, rep)
     if fmt == "contaplus_csv":
-        return read_contaplus_csv(text, rep), fmt
+        return read_contaplus_csv(text, rep)
     if fmt == "contaplus_ascii":
-        return read_contaplus_ascii(text, rep), fmt
+        return read_contaplus_ascii(text, rep)
     if fmt == "csv":
-        return read_csv(text, rep, column_map, delimiter), fmt
+        return read_csv(text, rep, column_map, delimiter)
     raise JournalError(f"formato de origen desconocido {fmt!r}; válidos: auto, {', '.join(FORMATS)}")
 
 

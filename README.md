@@ -54,6 +54,13 @@ Hosted mode: `CONTABRIDGE_TRANSPORT=http contabridge-mcp --http` (license per re
 
 Tuning: `CONTABRIDGE_PRICES` (`convert_journal=3,bank_to_journal=5`), `CONTABRIDGE_MAX_BYTES`.
 
+## Visual cards (MCP Apps)
+
+In Claude, ChatGPT, VS Code and Goose every paid tool and `credits_balance` renders as an interactive card in the
+chat: credit balance with a refill bar and a buy button, or a result summary (key figures, issues, table preview and
+credits charged). It is the `ui://contabridge/card.html` resource, self-contained with no network access. Other clients
+keep getting the same JSON as before.
+
 ## Claude skill
 
 `skills/contabridge/SKILL.md` (zipped in `distribution/contabridge-skill.zip`) tells the agent which tool to use, which account length to ask for, and how to save the file.

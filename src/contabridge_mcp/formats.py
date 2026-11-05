@@ -5,6 +5,7 @@
 - contaplus_csv: Sage ContaPlus 'Protocolo de comunicación' Diario in CSV (142 fields, ';'). Also read by Sage 50.
 - contaplus_ascii: the same Diario as fixed-width ASCII (XDiario.txt), first 32 fields (same layout BulmaGés writes).
 - csv: generic spreadsheet CSV with a header (Holded, Excel, any ERP export). Columns are auto-detected.
+- quickbooks_iif, quickbooks_csv, xero_csv: international formats, see intl.py.
 """
 
 from __future__ import annotations
@@ -15,11 +16,14 @@ import re
 from datetime import date
 from typing import Any, Callable
 
+from . import intl
 from .journal import Entry, JournalError, Line, parse_amount, parse_date
 
-FORMATS = ("a3", "contaplus_csv", "contaplus_ascii", "csv")
+SPANISH = ("a3", "contaplus_csv", "contaplus_ascii", "csv")
+FORMATS = SPANISH + intl.FORMATS
 EXTENSIONS = {"a3": "SUENLACE.DAT", "contaplus_csv": "XDiario.csv", "contaplus_ascii": "XDiario.txt",
-              "csv": "diario.csv"}
+              "csv": "diario.csv", **intl.EXTENSIONS}
+UTF8 = ("csv", "quickbooks_csv", "xero_csv")
 
 
 class Report:
@@ -404,6 +408,8 @@ def detect(text: str) -> str:
     lines = [ln for ln in text.splitlines() if ln.strip()][:20]
     if not lines:
         raise JournalError("fichero vacío")
+    if found := intl.detect(lines):
+        return found
     if all(len(ln.rstrip("\r")) in (254, 256, 510, 512) and ln[0] in "45" and ln[1:14].isdigit() for ln in lines):
         return "a3"
     if all(ln.count(";") >= 100 for ln in lines):
@@ -427,10 +433,12 @@ def _looks_cp_ascii(ln: str) -> bool:
 
 
 def read(text: str, fmt: str, rep: Report, column_map: dict[str, str] | None = None,
-         delimiter: str = "") -> tuple[list[Entry], str]:
+         delimiter: str = "", date_style: str = "") -> tuple[list[Entry], str]:
     text = text.replace("\r\n", "\n").replace("\r", "\n")  # old Mac / mixed line endings
     fmt = detect(text) if fmt in ("", "auto") else fmt
     try:
+        if fmt in intl.FORMATS:
+            return intl.read(text, fmt, rep, date_style), fmt
         return _read(text, fmt, rep, column_map, delimiter), fmt
     except csv.Error as exc:
         raise JournalError(f"CSV mal formado: {exc}") from exc
@@ -449,6 +457,8 @@ def _read(text: str, fmt: str, rep: Report, column_map: dict[str, str] | None, d
 
 
 def write(entries: list[Entry], fmt: str, rep: Report, **opts: Any) -> str:
+    if fmt in intl.FORMATS:
+        return intl.write(entries, fmt, rep, opts.get("date_style") or "", opts.get("tax_rate") or "")
     if fmt == "a3":
         return write_a3(entries, rep, opts.get("company_code") or "00001", int(opts.get("a3_format") or 5))
     if fmt == "contaplus_csv":

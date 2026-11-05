@@ -38,7 +38,7 @@
   "tools": [
     {
       "name": "convert_journal",
-      "description": "Convert a libro diario (journal) between Spanish accounting programs."
+      "description": "Convert a libro diario between A3, ContaPlus/Sage 50, CSV, QuickBooks (IIF/Online CSV) and Xero."
     },
     {
       "name": "validate_journal",
@@ -53,12 +53,16 @@
       "description": "Write journal entries you composed (e.g. from invoices or a payroll summary) as an import file."
     },
     {
+      "name": "bank_statement_csv",
+      "description": "Turn a Norma 43 statement into a Xero or QuickBooks Online bank statement CSV."
+    },
+    {
       "name": "resize_account",
       "description": "Resize or expand a Spanish subaccount code. Free. '430.1' -> '43000001'; 4300001 (7) -> 43000001 (8)."
     },
     {
       "name": "detect_format",
-      "description": "Tell which accounting import format a file is (a3, contaplus_csv, contaplus_ascii, csv). Free."
+      "description": "Tell which accounting import format a file is (A3, ContaPlus, CSV, QuickBooks, Xero). Free."
     },
     {
       "name": "pricing",
@@ -79,7 +83,10 @@
     "asientos",
     "norma43",
     "gestoria",
-    "spain"
+    "spain",
+    "quickbooks",
+    "iif",
+    "xero"
   ],
   "license": "BUSL-1.1",
   "compatibility": {

@@ -66,4 +66,6 @@ pip install -e '.[test]' && pytest
 
 The tests use a fake KeyFlint gateway and locally signed licenses, so they need no network. A3 and ContaPlus layouts are checked position by position against the official specifications.
 
-MIT
+## License
+
+Business Source License 1.1. Source available; production use needs a KeyFlint license (or must be non-commercial). Each version becomes Apache 2.0 four years after release. See [LICENSE](LICENSE).

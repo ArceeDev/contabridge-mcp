@@ -24,13 +24,35 @@ Charging works like this:
 
 ## Install
 
+All you need is your KeyFlint license (`LIC-...`). The gateway URL, its public key and the checkout link have defaults.
+
+**Claude Desktop, one click:** download `contabridge-mcp-X.Y.Z.mcpb` from the [latest release](https://github.com/ArceeDev/contabridge-mcp/releases/latest), double-click it and paste your license. No terminal, no JSON.
+
+**Claude Code:**
+
 ```bash
-pip install git+https://github.com/ArceeDev/contabridge-mcp
-KEYFLINT_LICENSE=LIC-... contabridge-mcp            # stdio
-CONTABRIDGE_TRANSPORT=http contabridge-mcp --http    # hosted; license per request (Authorization: Bearer LIC-...)
+claude mcp add contabridge -e KEYFLINT_LICENSE=LIC-... -- uvx contabridge-mcp
 ```
 
-Environment variables: `KEYFLINT_LICENSE`, `KEYFLINT_URL`, `KEYFLINT_PUBLIC_KEYS`, `KEYFLINT_CHECKOUT_URL`, `CONTABRIDGE_PRICES` (`convert_journal=3,bank_to_journal=5`), `CONTABRIDGE_MAX_BYTES`.
+**Cursor, Windsurf, Claude Desktop (JSON):**
+
+```json
+{
+  "mcpServers": {
+    "contabridge": {
+      "command": "uvx",
+      "args": ["contabridge-mcp"],
+      "env": { "KEYFLINT_LICENSE": "LIC-..." }
+    }
+  }
+}
+```
+
+Optional: `KEYFLINT_URL`, `KEYFLINT_PUBLIC_KEYS` (fetched from the gateway and cached in `~/.keyflint/keyring.json` when unset), `KEYFLINT_CHECKOUT_URL`.
+
+Hosted mode: `CONTABRIDGE_TRANSPORT=http contabridge-mcp --http` (license per request, `Authorization: Bearer LIC-...`).
+
+Tuning: `CONTABRIDGE_PRICES` (`convert_journal=3,bank_to_journal=5`), `CONTABRIDGE_MAX_BYTES`.
 
 ## Claude skill
 

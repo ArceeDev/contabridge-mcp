@@ -1,0 +1,215 @@
+<title>Migración contable</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: single column ledger-style page. Paper-grey ground, deep teal accent, mono for file records. */
+  :root {
+    --bg: #f3f5f4;
+    --surface: #ffffff;
+    --fg: #14211f;
+    --muted: #526360;
+    --line: #d5dcda;
+    --accent: #0b6b5d;
+    --accent-fg: #ffffff;
+    --accent-soft: #dcefeb;
+    --warn: #8a5a00;
+    --mono-a: #0b6b5d;
+    --mono-b: #8a3d6b;
+    --mono-c: #1d5ea8;
+    --mono-d: #8a5a00;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1716; --surface: #162120; --fg: #e6efed; --muted: #9db0ac; --line: #28383a;
+      --accent: #4fc2ae; --accent-fg: #06201b; --accent-soft: #14312d; --warn: #e0b04d;
+      --mono-a: #4fc2ae; --mono-b: #e08fc0; --mono-c: #7db4f2; --mono-d: #e0b04d;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1716; --surface: #162120; --fg: #e6efed; --muted: #9db0ac; --line: #28383a;
+    --accent: #4fc2ae; --accent-fg: #06201b; --accent-soft: #14312d; --warn: #e0b04d;
+    --mono-a: #4fc2ae; --mono-b: #e08fc0; --mono-c: #7db4f2; --mono-d: #e0b04d;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); font: 16px/1.6 var(--font-body);
+    padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header.top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; padding-block: 20px; border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 600; letter-spacing: .01em; }
+  .brand small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 16px; font-size: 15px; }
+  nav a:hover { color: var(--accent); }
+  h1 { font-size: clamp(28px, 5vw, 42px); line-height: 1.15; margin: 48px 0 16px; text-wrap: balance; font-weight: 600; }
+  h2 { font-size: 22px; line-height: 1.25; margin: 0 0 8px; text-wrap: balance; font-weight: 600; }
+  p { margin: 0 0 12px; max-width: 65ch; }
+  .lead { font-size: 18px; color: var(--muted); max-width: 60ch; }
+  section { padding-block: 40px; border-top: 1px solid var(--line); }
+  section.hero { border-top: 0; padding-top: 0; }
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; align-items: center; }
+  .btn { display: inline-block; background: var(--accent); color: var(--accent-fg); padding: 12px 20px; border-radius: 6px; font-weight: 600; text-decoration: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:focus-visible, a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .note { color: var(--muted); font-size: 14px; }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+  td.mono, .mono { font-family: var(--font-mono); font-size: 14px; }
+
+  .record { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-top: 16px; }
+  .record pre { margin: 0; font: 13px/1.7 var(--font-mono); white-space: pre; }
+  .record .a { color: var(--mono-a); } .record .b { color: var(--mono-b); }
+  .record .c { color: var(--mono-c); } .record .d { color: var(--mono-d); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 12px; font: 13px var(--font-mono); }
+
+  .tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .tier { padding: 20px; min-width: 0; border-right: 1px solid var(--line); }
+  .tier:last-child { border-right: 0; }
+  @media (max-width: 700px) { .tier { border-right: 0; border-bottom: 1px solid var(--line); } .tier:last-child { border-bottom: 0; } }
+  .tier h3 { margin: 0 0 4px; font-size: 17px; }
+  .price { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 12px; }
+  .price small { font-size: 14px; font-weight: 400; color: var(--muted); }
+  .tier ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
+  .tier ul li { margin-bottom: 4px; }
+
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 16px; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 36px 1fr; gap: 12px; }
+  ol.steps li::before { content: counter(s); font: 600 15px var(--font-mono); width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+  ol.steps strong { display: block; }
+  ol.steps span { color: var(--muted); }
+
+  details { border-bottom: 1px solid var(--line); padding: 12px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin-top: 8px; color: var(--muted); }
+
+  .contact { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 24px; }
+  .email-line { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0; }
+  .email-line code { font: 16px var(--font-mono); background: var(--accent-soft); padding: 6px 10px; border-radius: 4px; overflow-wrap: anywhere; }
+  footer { padding-block: 32px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">Migración contable <small>para gestorías y autónomos</small></div>
+    <nav><a href="#que-migramos">Qué migramos</a><a href="#precios">Precios</a><a href="#preguntas">Preguntas</a><a href="#contacto">Contacto</a></nav>
+  </header>
+
+  <section class="hero">
+    <h1>Pasamos tu contabilidad de ContaPlus, A3 o Excel al programa que uses ahora</h1>
+    <p class="lead">Nos mandas el libro diario, lo convertimos al formato exacto que pide tu programa y lo revisamos antes de entregártelo: asientos cuadrados, cuentas con la longitud correcta y fechas dentro del ejercicio.</p>
+    <div class="cta-row">
+      <a class="btn" href="#contacto">Pedir presupuesto</a>
+      <span class="note">Respuesta con precio cerrado antes de empezar.</span>
+    </div>
+  </section>
+
+  <section id="que-migramos">
+    <h2>Qué migramos</h2>
+    <p>Trabajamos con los ficheros de intercambio oficiales de cada programa, no con capturas ni a mano.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Programa</th><th>Fichero</th><th>Entra</th><th>Sale</th></tr></thead>
+        <tbody>
+          <tr><td>a3ASESOR / a3ECO / a3CON</td><td class="mono">SUENLACE.DAT</td><td>Sí (apuntes sin IVA)</td><td>Sí</td></tr>
+          <tr><td>Sage ContaPlus / Sage 50</td><td class="mono">Diario CSV / XDiario</td><td>Sí</td><td>Sí</td></tr>
+          <tr><td>Excel, Holded y otros</td><td class="mono">CSV con cabecera</td><td>Sí</td><td>Sí</td></tr>
+          <tr><td>Extracto bancario</td><td class="mono">Norma 43 (.n43)</td><td>Sí</td><td>Asientos contra el 572</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:12px">Las facturas con IVA de A3 (registros tipo 1, 2 y 9) no se leen todavía: lo avisamos en el presupuesto si tu fichero las incluye.</p>
+
+    <h2 style="margin-top:32px">Así es un apunte de A3, campo a campo</h2>
+    <p>El formato es de posiciones fijas. Un solo carácter fuera de sitio y el programa rechaza el fichero. Esto es lo que revisamos en cada línea:</p>
+    <div class="record scroll" aria-label="Ejemplo de registro SUENLACE.DAT con campos coloreados">
+<pre><span class="a">5</span><span class="b">00001</span><span class="c">20260331</span><span class="d">0</span><span class="a">64000001    </span><span class="b">Sueldos y salarios            </span><span class="c">D</span><span class="d">NOM03     </span><span class="a">I</span><span class="b">Nómina marzo                  </span><span class="c">+0000001500.00</span></pre>
+    </div>
+    <div class="legend">
+      <span class="a">5 formato</span><span class="b">00001 empresa</span><span class="c">20260331 fecha</span><span class="d">0 tipo</span>
+      <span class="a">cuenta (12)</span><span class="b">nombre (30)</span><span class="c">D/H</span><span class="d">documento (10)</span>
+      <span class="a">I/M/U</span><span class="b">concepto (30)</span><span class="c">importe</span>
+    </div>
+  </section>
+
+  <section id="precios">
+    <h2>Precios</h2>
+    <p>Precio cerrado por migración. IVA no incluido.</p>
+    <div class="tiers">
+      <div class="tier">
+        <h3>Sencilla</h3>
+        <div class="price">150 € <small>desde</small></div>
+        <ul><li>Un ejercicio</li><li>Un solo programa de origen</li><li>Revisión de descuadres</li></ul>
+      </div>
+      <div class="tier">
+        <h3>Estándar</h3>
+        <div class="price">300 € <small>desde</small></div>
+        <ul><li>Varios ejercicios</li><li>Unificar la longitud de subcuentas</li><li>Cambios de código de cuenta</li></ul>
+      </div>
+      <div class="tier">
+        <h3>Compleja</h3>
+        <div class="price">500 € <small>desde</small></div>
+        <ul><li>Varias empresas</li><li>Extractos bancarios contabilizados</li><li>Reglas de cuentas a medida</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="como-funciona">
+    <h2>Cómo funciona</h2>
+    <ol class="steps">
+      <li><div><strong>Nos envías el fichero</strong><span>El export de tu programa actual. Te decimos cómo sacarlo.</span></div></li>
+      <li><div><strong>Lo revisamos y te damos precio</strong><span>Miramos asientos, cuentas y fechas, y te decimos qué hay que corregir.</span></div></li>
+      <li><div><strong>Convertimos al formato de destino</strong><span>Con la longitud de subcuenta y la numeración que pida tu programa.</span></div></li>
+      <li><div><strong>Recibes el fichero y un informe</strong><span>Totales de debe y haber, número de asientos y cualquier aviso. Tú lo importas.</span></div></li>
+    </ol>
+  </section>
+
+  <section id="preguntas">
+    <h2>Preguntas</h2>
+    <details><summary>¿Qué pasa con mis datos?</summary><p>Se usan solo para esta conversión y se borran al terminar. Si trabajas con datos de clientes, te firmamos un encargo de tratamiento.</p></details>
+    <details><summary>¿Y si mi programa rechaza el fichero?</summary><p>Lo corregimos sin coste. Si no podemos garantizar que se importe, te lo decimos antes de cobrar.</p></details>
+    <details><summary>¿Qué programas no cubrís?</summary><p>Ahora mismo A3, ContaPlus/Sage 50 y cualquier CSV. Si usas otro, mándanos un export y vemos si se puede.</p></details>
+    <details><summary>¿Puedo hacerlo yo sin vosotros?</summary><p>Sí. La herramienta es un servidor MCP que cualquier asistente de IA puede usar; si prefieres que lo hagamos nosotros, para eso está este servicio.</p></details>
+  </section>
+
+  <section id="contacto">
+    <div class="contact">
+      <h2>Pide presupuesto</h2>
+      <p>Escríbenos con el programa de origen, el de destino y cuántos ejercicios son.</p>
+      <div class="email-line">
+        <code id="email">tu-correo@ejemplo.es</code>
+        <button class="btn ghost" id="copy" type="button">Copiar correo</button>
+      </div>
+      <p class="note" id="copy-note" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <footer>Migración contable. Los nombres A3, ContaPlus, Sage y Holded pertenecen a sus propietarios; este servicio no está afiliado a ellos.</footer>
+</div>
+
+<script>
+  // Cambia este correo por el real antes de publicar la página.
+  var EMAIL = "tu-correo@ejemplo.es";
+  var emailEl = document.getElementById("email");
+  var note = document.getElementById("copy-note");
+  emailEl.textContent = EMAIL;
+  document.getElementById("copy").addEventListener("click", function () {
+    function fallback() {
+      var r = document.createRange(); r.selectNodeContents(emailEl);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      note.textContent = "Selecciona y copia el correo.";
+    }
+    try {
+      navigator.clipboard.writeText(EMAIL).then(function () { note.textContent = "Correo copiado."; }, fallback);
+    } catch (e) { fallback(); }
+  });
+</script>

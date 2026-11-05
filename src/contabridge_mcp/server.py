@@ -19,6 +19,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from . import __version__, bank, formats, journal, n43
+from . import apps
 from .billing import Billing
 
 DEFAULT_PRICES = {"convert_journal": 2, "validate_journal": 1, "bank_to_journal": 3, "build_journal": 2}
@@ -58,6 +59,11 @@ mcp = MCPServer(
     ),
 )
 
+
+UI = apps.ui_meta("contabridge")
+apps.register(mcp, slug="contabridge", name="ContaBridge", icon="ledger", version=__version__, lang="es",
+              buy_url=lambda: billing.checkout_url,
+              labels={"convert_journal": "Conversión de diario", "validate_journal": "Validación de diario", "bank_to_journal": "Extracto a asientos", "build_journal": "Fichero de asientos", "bank_statement_csv": "Extracto a CSV", "credits_balance": "Saldo de créditos"})
 
 @contextmanager
 def _user_errors() -> Iterator[None]:
@@ -105,7 +111,7 @@ def _emit(entries: list[journal.Entry], target: str, rep: formats.Report, opts: 
     return {**_file(target, text), "summary": journal.summary(entries), "issues": issues, "warnings": rep.done()}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def convert_journal(ctx: Context, target_format: str, content: str = "", content_base64: str = "",
                           source_format: str = "auto", account_digits: int = 0, account_split: int = 4,
                           account_map: dict[str, str] | None = None, start_entry_number: int = 0,
@@ -155,7 +161,7 @@ async def convert_journal(ctx: Context, target_format: str, content: str = "", c
             "billing": _note(receipt, PRICES["convert_journal"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def validate_journal(ctx: Context, content: str = "", content_base64: str = "", source_format: str = "auto",
                            fiscal_year: int = 0, column_map: dict[str, str] | None = None,
                            csv_delimiter: str = "", include_entries: bool = False) -> dict[str, Any]:
@@ -181,7 +187,7 @@ async def validate_journal(ctx: Context, content: str = "", content_base64: str 
     return {**out, "billing": _note(receipt, PRICES["validate_journal"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = "csv", content: str = "",
                           content_base64: str = "", rules: list[dict[str, Any]] | None = None,
                           suspense_account: str = "", bank_accounts: dict[str, str] | None = None,
@@ -237,7 +243,7 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
             "billing": _note(receipt, PRICES["bank_to_journal"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(annotations=LOCAL, meta=UI)
 async def build_journal(ctx: Context, entries: list[dict[str, Any]], target_format: str,
                         account_digits: int = 0, account_split: int = 4, start_entry_number: int = 0,
                         company_code: str = "00001", a3_format: int = 5, decimal_comma: bool = True,
@@ -292,7 +298,7 @@ def pricing() -> dict[str, Any]:
             "buy_credits": billing.checkout_url or "Set KEYFLINT_CHECKOUT_URL"}
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), meta=UI)
 async def credits_balance(ctx: Context) -> dict[str, Any]:
     """Remaining credits on your KeyFlint license. Free."""
     return await billing.balance(_headers(ctx))

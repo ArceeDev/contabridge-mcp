@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "contabridge-mcp",
+  "display_name": "ContaBridge",
+  "version": "0.1.0",
+  "description": "Convierte el libro diario entre A3 (SUENLACE.DAT), ContaPlus, Sage 50 y CSV, y pasa extractos Norma 43 a asientos.",
+  "long_description": "Puente contable para gestorías: convierte y valida ficheros de importación de asientos entre A3, ContaPlus/Sage 50 y CSV, genera asientos desde extractos Norma 43 con reglas y redimensiona subcuentas. Pago por uso con créditos KeyFlint.",
+  "author": {
+    "name": "ArceeDev",
+    "url": "https://mcp.keyflint.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArceeDev/contabridge-mcp"
+  },
+  "homepage": "https://mcp.keyflint.dev",
+  "support": "https://github.com/ArceeDev/contabridge-mcp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/contabridge_mcp/__main__.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "--no-dev",
+        "--quiet",
+        "contabridge-mcp"
+      ],
+      "env": {
+        "KEYFLINT_LICENSE": "${user_config.license_key}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "convert_journal",
+      "description": "Convert a libro diario (journal) between Spanish accounting programs."
+    },
+    {
+      "name": "validate_journal",
+      "description": "Check a journal file the way A3/ContaPlus check it on import, before you send it."
+    },
+    {
+      "name": "bank_to_journal",
+      "description": "Turn a Norma 43 (Cuaderno 43) bank statement into journal entries ready to import."
+    },
+    {
+      "name": "build_journal",
+      "description": "Write journal entries you composed (e.g. from invoices or a payroll summary) as an import file."
+    },
+    {
+      "name": "resize_account",
+      "description": "Resize or expand a Spanish subaccount code. Free. '430.1' -> '43000001'; 4300001 (7) -> 43000001 (8)."
+    },
+    {
+      "name": "detect_format",
+      "description": "Tell which accounting import format a file is (a3, contaplus_csv, contaplus_ascii, csv). Free."
+    },
+    {
+      "name": "pricing",
+      "description": "Credit price of each tool and where to buy credits. Free."
+    },
+    {
+      "name": "credits_balance",
+      "description": "Remaining credits on your KeyFlint license. Free."
+    }
+  ],
+  "keywords": [
+    "mcp",
+    "contabilidad",
+    "a3",
+    "suenlace",
+    "contaplus",
+    "sage",
+    "asientos",
+    "norma43",
+    "gestoria",
+    "spain"
+  ],
+  "license": "BUSL-1.1",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "user_config": {
+    "license_key": {
+      "type": "string",
+      "title": "Licencia KeyFlint",
+      "description": "Tu licencia (empieza por LIC-). La recibes al comprar en mcp.keyflint.dev; una sola licencia sirve para todos los MCPs.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

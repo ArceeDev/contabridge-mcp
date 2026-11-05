@@ -204,3 +204,23 @@ def test_bad_rules():
         bank.build_rules([{"contains": "x"}])
     with pytest.raises(JournalError, match="regex"):
         bank.build_rules([{"account": "6", "regex": "("}])
+
+
+def test_contaplus_ascii_matches_bulmages_layout():
+    """Same widths, justification and fixed values the BulmaGés XDiario exporter writes."""
+    rec = formats.write_contaplus_ascii(sample_entries(), formats.Report()).split("\r\n")[3]
+    assert len(rec) == formats.CP_ASCII_WIDTH == 297
+    assert rec[0:6] == "     2" and rec[6:14] == "20260402" and rec[14:26] == "62800000    "
+    assert rec[38:54] == "            0.00"          # PtaDebe right-aligned
+    assert rec[54:79] == "Recibo luz Iberdrola     "  # Concepto
+    off = {name: sum(w for _, w in formats._CP_LAYOUT[:i]) for i, (name, _) in enumerate(formats._CP_LAYOUT)}
+    assert rec[off["MonedaUso"]] == "2"
+    assert rec[off["EuroDebe"]:off["EuroDebe"] + 16] == "           45.30"
+    assert rec[off["NoConv"]] == "F" and rec[off["NumeroInv"]:].strip() == ""
+
+
+def test_a3_euro_sign_survives_cp1252():
+    e = sample_entries()
+    e[1].lines[0].concept = "Cuota 10€"
+    text = formats.write_a3(e, formats.Report())
+    assert "Cuota 10€".encode("cp1252") in text.encode("cp1252")

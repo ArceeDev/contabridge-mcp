@@ -52,7 +52,7 @@ mcp = MCPServer(
         "your rules; unmatched movements go to a suspense account (555) and are listed, never guessed. "
         "`build_journal` writes entries you composed into any of the formats. `validate_journal` runs the checks "
         "these programs run on import (balanced entries, debit xor credit, PGC groups, fiscal year). "
-        "Amounts are strings with 2 decimals. Output files come as `content` and as `content_base64` in Latin-1 "
+        "Amounts are strings with 2 decimals. Output files come as `content` and as `content_base64` in Windows-1252 "
         "with CRLF, which is what A3 and ContaPlus read: save the base64 bytes to disk. Free: `resize_account`, "
         "`detect_format`, `pricing`, `credits_balance`. Unreadable input is never charged; failures are refunded."
     ),
@@ -79,8 +79,8 @@ def _note(receipt: dict, credits: int) -> dict[str, Any]:
 
 
 def _file(fmt: str, text: str) -> dict[str, Any]:
-    raw = text.encode("latin-1", "replace") if fmt != "csv" else ("﻿" + text).encode("utf-8")
-    return {"format": fmt, "filename": formats.EXTENSIONS[fmt], "encoding": "latin-1" if fmt != "csv" else "utf-8-sig",
+    raw = text.encode("cp1252", "replace") if fmt != "csv" else ("﻿" + text).encode("utf-8")
+    return {"format": fmt, "filename": formats.EXTENSIONS[fmt], "encoding": "cp1252" if fmt != "csv" else "utf-8-sig",
             "content": text, "content_base64": base64.b64encode(raw).decode()}
 
 
@@ -115,7 +115,7 @@ async def convert_journal(ctx: Context, target_format: str, content: str = "", c
     """Convert a libro diario (journal) between Spanish accounting programs.
 
     Formats: `a3` (a3ASESOR/a3ECO/a3CON SUENLACE.DAT, apuntes tipo 0), `contaplus_csv` (Sage ContaPlus / Sage 50
-    Diario CSV, 142 fields), `contaplus_ascii` (XDiario.txt fixed width, beta), `csv` (spreadsheet with header:
+    Diario CSV, 142 fields), `contaplus_ascii` (XDiario.txt fixed width), `csv` (spreadsheet with header:
     Holded, Excel, any ERP; columns auto-detected, override with column_map). The source is auto-detected.
 
     Args:

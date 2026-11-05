@@ -10,7 +10,7 @@ An MCP server that moves bookkeeping between Spanish accounting programs, built 
 | `validate_journal` | 1 | Runs the checks A3 and ContaPlus run on import: balanced entries, debit or credit on each line (never both), PGC groups, fiscal year, mixed account lengths. |
 | `resize_account`, `detect_format`, `pricing`, `credits_balance` | 0 | Free helpers. |
 
-Output files are returned as `content` and as `content_base64`. The base64 version is Latin-1 with CRLF line endings (UTF-8 with BOM for CSV), which is what these programs import.
+Output files are returned as `content` and as `content_base64`. The base64 version is Windows-1252 with CRLF line endings (UTF-8 with BOM for CSV), which is what these programs import.
 
 Charging works like this:
 - A file that would be rejected (unbalanced, unreadable, missing columns) is refused **before** any credits are charged.
@@ -19,7 +19,7 @@ Charging works like this:
 ## Formats and sources
 
 - **A3**: "Enlace contable de entrada. Descripción de registros" (Wolters Kluwer). Record type 0, format 5 (512 bytes) and format 4 (256 bytes). When reading, invoice records (types 1, 2 and 9) are skipped and reported in a warning.
-- **ContaPlus**: "Protocolo de comunicación de programas de gestión con ContaPlus" (Sage, 2023). Writes Asien, Fecha, SubCta, Contra, Concepto, Documento, MonedaUso=2, EuroDebe and EuroHaber. The fixed-width ASCII variant is **beta**: check it against an export from your own version.
+- **ContaPlus**: "Protocolo de comunicación de programas de gestión con ContaPlus" (Sage, 2023). Writes Asien, Fecha, SubCta, Contra, Concepto, Documento, MonedaUso=2, EuroDebe and EuroHaber. The fixed-width ASCII variant (32 fields) uses the same layout as the open-source BulmaGés exporter.
 - **CSV**: columns are detected in Spanish and English (`fecha`, `cuenta`, `debe`, `haber`, `importe`+`d/h`…), or set with `column_map`. A file without an entry number is grouped into entries by accumulating lines until they balance.
 
 ## Install
@@ -31,6 +31,10 @@ CONTABRIDGE_TRANSPORT=http contabridge-mcp --http    # hosted; license per reque
 ```
 
 Environment variables: `KEYFLINT_LICENSE`, `KEYFLINT_URL`, `KEYFLINT_PUBLIC_KEYS`, `KEYFLINT_CHECKOUT_URL`, `CONTABRIDGE_PRICES` (`convert_journal=3,bank_to_journal=5`), `CONTABRIDGE_MAX_BYTES`.
+
+## Claude skill
+
+`skills/contabridge/SKILL.md` (zipped in `distribution/contabridge-skill.zip`) tells the agent which tool to use, which account length to ask for, and how to save the file.
 
 ## Tests
 

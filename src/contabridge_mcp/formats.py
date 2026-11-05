@@ -3,7 +3,7 @@
 - a3: a3ASESOR/a3ECO/a3CON 'Enlace contable de entrada' SUENLACE.DAT, record type 0 (apuntes sin IVA).
   Format 5 (512-byte records, current) and format 4 (256-byte records, older versions).
 - contaplus_csv: Sage ContaPlus 'Protocolo de comunicación' Diario in CSV (142 fields, ';'). Also read by Sage 50.
-- contaplus_ascii: the same Diario as fixed-width ASCII (XDiario.txt), first 31 fields. Beta.
+- contaplus_ascii: the same Diario as fixed-width ASCII (XDiario.txt), first 32 fields (same layout BulmaGés writes).
 - csv: generic spreadsheet CSV with a header (Holded, Excel, any ERP export). Columns are auto-detected.
 """
 
@@ -42,8 +42,8 @@ class Report:
 
 
 def _latin(text: str) -> str:
-    """Characters outside Latin-1 are replaced so the file can be written in the encoding these programs read."""
-    return text.encode("latin-1", "replace").decode("latin-1").replace("\r", " ").replace("\n", " ")
+    """Characters outside Windows-1252 are replaced so the file can be written in the encoding these programs read."""
+    return text.encode("cp1252", "replace").decode("cp1252").replace("\r", " ").replace("\n", " ")
 
 
 def _dot_amount(raw: str, where: str) -> int:
@@ -151,7 +151,7 @@ _CP_LAYOUT = [("Asien", 6), ("Fecha", 8), ("SubCta", 12), ("Contra", 12), ("PtaD
               ("Departa", 3), ("Clave", 6), ("Estado", 1), ("NCasado", 6), ("TCasado", 1), ("Trans", 6),
               ("Cambio", 16), ("DebeME", 16), ("HaberME", 16), ("Auxiliar", 1), ("Serie", 1), ("Sucursal", 4),
               ("CodDivisa", 5), ("ImpAuxME", 16), ("MonedaUso", 1), ("EuroDebe", 16), ("EuroHaber", 16),
-              ("BaseEuro", 16), ("NoConv", 1)]
+              ("BaseEuro", 16), ("NoConv", 1), ("NumeroInv", 10)]
 _CP_IDX = {name: i for i, (name, _) in enumerate(_CP_LAYOUT)}
 _CP_NUMERIC = {"Asien", "PtaDebe", "PtaHaber", "Factura", "Baseimpo", "IVA", "Recequiv", "NCasado", "TCasado",
                "Trans", "Cambio", "DebeME", "HaberME", "ImpAuxME", "EuroDebe", "EuroHaber", "BaseEuro"}
@@ -167,7 +167,8 @@ def _cp_values(e: Entry, ln: Line, rep: Report) -> dict[str, str]:
     return {"Asien": str(e.number), "Fecha": e.date.strftime("%Y%m%d"), "SubCta": rep.fit(ln.account, 12, "cuenta"),
             "Contra": _contra(e, ln)[:12], "Concepto": rep.fit(_latin(ln.concept), 25, "concepto"),
             "Documento": rep.fit(_latin(ln.document), 10, "documento"), "MonedaUso": "2",
-            "EuroDebe": _plain(ln.debit), "EuroHaber": _plain(ln.credit), "PtaDebe": "0.00", "PtaHaber": "0.00"}
+            "EuroDebe": _plain(ln.debit), "EuroHaber": _plain(ln.credit), "PtaDebe": "0.00", "PtaHaber": "0.00",
+            "DebeME": "0.00", "HaberME": "0.00", "BaseEuro": "0.00", "NoConv": "F"}
 
 
 def _plain(cents: int) -> str:
@@ -184,7 +185,8 @@ def write_contaplus_csv(entries: list[Entry], rep: Report) -> str:
             vals = _cp_values(e, ln, rep)
             row = [""] * CP_FIELDS
             for name, v in vals.items():
-                row[_CP_IDX[name]] = v.replace(";", ",")
+                if name not in ("DebeME", "HaberME", "BaseEuro", "NoConv"):
+                    row[_CP_IDX[name]] = v.replace(";", ",")
             out.append(";".join(row))
     return "\r\n".join(out) + "\r\n"
 

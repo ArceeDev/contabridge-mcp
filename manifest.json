@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "contabridge-mcp",
   "display_name": "ContaBridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Convierte el libro diario entre A3 (SUENLACE.DAT), ContaPlus, Sage 50 y CSV, y pasa extractos Norma 43 a asientos.",
   "long_description": "Puente contable para gestorías: convierte y valida ficheros de importación de asientos entre A3, ContaPlus/Sage 50 y CSV, genera asientos desde extractos Norma 43 con reglas y redimensiona subcuentas. Pago por uso con créditos KeyFlint.",
   "author": {

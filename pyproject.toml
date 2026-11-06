@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contabridge-mcp"
-version = "0.1.0"
-description = "MCP server for Spanish accounting import files: convert journals between A3 (SUENLACE.DAT), ContaPlus, Sage 50 and CSV, and turn Norma 43 bank statements into journal entries. Billed per call with KeyFlint credits."
+version = "0.2.0"
+description = "MCP server for Spanish accounting import files: convert journals between A3 (SUENLACE.DAT), ContaPlus, Sage 50, CSV, QuickBooks (IIF/CSV) and Xero (CSV), and turn Norma 43 bank statements into journal entries. Billed per call with KeyFlint credits."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "BUSL-1.1"
 license-files = ["LICENSE"]
 authors = [{ name = "ArceeDev" }]
-keywords = ["mcp", "contabilidad", "a3", "a3asesor", "suenlace", "contaplus", "sage", "libro-diario", "asientos", "norma43", "gestoria", "spain"]
+keywords = ["mcp", "contabilidad", "a3", "a3asesor", "suenlace", "contaplus", "sage", "libro-diario", "asientos", "norma43", "gestoria", "spain", "quickbooks", "iif", "xero"]
 dependencies = [
     "mcp>=2.0",
     "keyflint-verify[fast]>=1.2.0",

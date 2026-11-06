@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "contabridge-mcp",
   "display_name": "ContaBridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Convierte el libro diario entre A3 (SUENLACE.DAT), ContaPlus, Sage 50 y CSV, y pasa extractos Norma 43 a asientos.",
   "long_description": "Puente contable para gestorías: convierte y valida ficheros de importación de asientos entre A3, ContaPlus/Sage 50 y CSV, genera asientos desde extractos Norma 43 con reglas y redimensiona subcuentas. Pago por uso con créditos KeyFlint.",
   "author": {
@@ -38,7 +38,7 @@
   "tools": [
     {
       "name": "convert_journal",
-      "description": "Convert a libro diario (journal) between Spanish accounting programs."
+      "description": "Convert a libro diario between A3, ContaPlus/Sage 50, CSV, QuickBooks (IIF/Online CSV) and Xero."
     },
     {
       "name": "validate_journal",
@@ -53,12 +53,16 @@
       "description": "Write journal entries you composed (e.g. from invoices or a payroll summary) as an import file."
     },
     {
+      "name": "bank_statement_csv",
+      "description": "Turn a Norma 43 statement into a Xero or QuickBooks Online bank statement CSV."
+    },
+    {
       "name": "resize_account",
       "description": "Resize or expand a Spanish subaccount code. Free. '430.1' -> '43000001'; 4300001 (7) -> 43000001 (8)."
     },
     {
       "name": "detect_format",
-      "description": "Tell which accounting import format a file is (a3, contaplus_csv, contaplus_ascii, csv). Free."
+      "description": "Tell which accounting import format a file is (A3, ContaPlus, CSV, QuickBooks, Xero). Free."
     },
     {
       "name": "pricing",
@@ -79,7 +83,10 @@
     "asientos",
     "norma43",
     "gestoria",
-    "spain"
+    "spain",
+    "quickbooks",
+    "iif",
+    "xero"
   ],
   "license": "BUSL-1.1",
   "compatibility": {

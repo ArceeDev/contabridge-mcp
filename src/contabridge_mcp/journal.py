@@ -150,8 +150,11 @@ PGC_GROUPS = {"1": "Financiación básica", "2": "Activo no corriente", "3": "Ex
               "9": "Ingresos imputados al patrimonio neto"}
 
 
-def validate(entries: list[Entry], fiscal_year: int | None = None) -> list[dict[str, Any]]:
-    """Checks every accounting package enforces on import, so the file is fixed before it is rejected."""
+def validate(entries: list[Entry], fiscal_year: int | None = None, pgc: bool = True) -> list[dict[str, Any]]:
+    """Checks every accounting package enforces on import, so the file is fixed before it is rejected.
+
+    pgc=False (QuickBooks/Xero charts) only requires a non-empty account instead of a numeric PGC subaccount.
+    """
     issues: list[dict[str, Any]] = []
 
     def add(level: str, entry: int, msg: str, line: int | None = None) -> None:
@@ -178,8 +181,13 @@ def validate(entries: list[Entry], fiscal_year: int | None = None) -> list[dict[
             if ln.debit < 0 or ln.credit < 0:
                 add("warning", ref, f"importe negativo en {ln.account} (algunos programas lo rechazan)",
                     ln.source_line)
+            if not pgc:
+                if not ln.account.strip():
+                    add("error", ref, "apunte sin cuenta", ln.source_line)
+                continue
             if not ln.account.isdigit():
-                add("error", ref, f"cuenta no numérica: {ln.account!r}", ln.source_line)
+                add("error", ref, f"cuenta no numérica: {ln.account!r} (usa account_map para pasarla a una "
+                                  "subcuenta del PGC)", ln.source_line)
                 continue
             if ln.account[0] not in PGC_GROUPS:
                 add("error", ref, f"cuenta {ln.account} fuera de los grupos 1-9 del PGC", ln.source_line)

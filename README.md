@@ -1,12 +1,13 @@
 # contabridge-mcp
 
-An MCP server that moves bookkeeping between Spanish accounting programs, built for AI agents that work for gestorías and accounting firms with many clients. It does not store any data between calls, and every result is deterministic.
+An MCP server that moves bookkeeping between Spanish accounting programs and QuickBooks / Xero, built for AI agents that work for gestorías and accounting firms with many clients. It does not store any data between calls, and every result is deterministic.
 
 | Tool | Credits | What it does |
 | --- | --- | --- |
-| `convert_journal` | 2 | Converts a libro diario between **a3ASESOR/a3ECO/a3CON** (`SUENLACE.DAT`), **Sage ContaPlus / Sage 50** (Diario CSV of 142 fields, or XDiario ASCII) and **spreadsheet CSV** (Holded, Excel, any ERP). It resizes subaccounts (`4300001` → `43000001`, `430.1` → `43000001`), renames accounts and renumbers entries. |
+| `convert_journal` | 2 | Converts a libro diario between **a3ASESOR/a3ECO/a3CON** (`SUENLACE.DAT`), **Sage ContaPlus / Sage 50** (Diario CSV of 142 fields, or XDiario ASCII) **spreadsheet CSV** (Holded, Excel, any ERP), **QuickBooks** (Desktop IIF, Online journal CSV) and **Xero** (manual journal CSV). It resizes subaccounts (`4300001` → `43000001`, `430.1` → `43000001`), renames accounts and renumbers entries. |
 | `bank_to_journal` | 3 | Turns a **Norma 43** bank statement into journal entries against the 572 subaccount. Ordered rules map movements to counterpart accounts (by text, regex, AEB concept or direction), and movements that match no rule go to 555 and are listed. |
 | `build_journal` | 2 | Writes entries the agent composed (invoices, payroll, accruals) in any of the formats. |
+| `bank_statement_csv` | 1 | Turns a **Norma 43** statement into a bank statement CSV for **Xero** (precoded template) or **QuickBooks Online** (3 columns). |
 | `validate_journal` | 1 | Runs the checks A3 and ContaPlus run on import: balanced entries, debit or credit on each line (never both), PGC groups, fiscal year, mixed account lengths. |
 | `resize_account`, `detect_format`, `pricing`, `credits_balance` | 0 | Free helpers. |
 
@@ -20,6 +21,10 @@ Charging works like this:
 
 - **A3**: "Enlace contable de entrada. Descripción de registros" (Wolters Kluwer). Record type 0, format 5 (512 bytes) and format 4 (256 bytes). When reading, invoice records (types 1, 2 and 9) are skipped and reported in a warning.
 - **ContaPlus**: "Protocolo de comunicación de programas de gestión con ContaPlus" (Sage, 2023). Writes Asien, Fecha, SubCta, Contra, Concepto, Documento, MonedaUso=2, EuroDebe and EuroHaber. The fixed-width ASCII variant (32 fields) uses the same layout as the open-source BulmaGés exporter.
+- **QuickBooks Desktop IIF**: `GENERAL JOURNAL` transactions (`!TRNS`/`!SPL`/`!ENDTRNS`, tab separated). Debits are positive and credits negative, so the TRNS amount is minus the sum of its SPL lines. Other IIF lists (accounts, customers) are skipped with a warning.
+- **QuickBooks Online**: "Import journal entries" CSV with `Journal No., Journal Date, Account Name, Debits, Credits, Description, Name`.
+- **Xero**: "Import a manual journal" template (`*Narration, *Date, Description, *AccountCode, *TaxRate, *Amount`, tracking). Lines with the same Narration and Date form one journal. `xero_tax_rate` sets the TaxRate as named in that organisation (UK `No VAT`, AU `BAS Excluded`, NZ `No GST`, US `Tax Exempt`).
+- QuickBooks and Xero dates follow `date_style`: `mdy` (default for QuickBooks), `dmy` (default for Xero) or `iso`. Amounts use a decimal point, and a comma is always read as a thousands separator. Their accounts are names or codes, so they are validated against their own chart, not the PGC. Use `account_map` to translate them when converting to or from A3/ContaPlus.
 - **CSV**: columns are detected in Spanish and English (`fecha`, `cuenta`, `debe`, `haber`, `importe`+`d/h`…), or set with `column_map`. A file without an entry number is grouped into entries by accumulating lines until they balance.
 
 ## Install

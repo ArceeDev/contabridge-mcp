@@ -168,3 +168,45 @@ async def test_hosted_requires_license_header(gateway, license_, monkeypatch):
         srv.billing.client(None)
     assert "Bearer" in str(exc.value)
     assert srv.billing.client({"Authorization": f"Bearer {license_['license_key']}"}) is not None
+
+
+async def test_convert_to_xero_and_quickbooks_over_protocol(server):
+    before = await balance(server)
+    err, xero, text = await call(server, "convert_journal", content=DIARIO, target_format="xero_csv",
+                                 xero_tax_rate="No VAT")
+    assert not err, text
+    assert xero["encoding"] == "utf-8-sig" and xero["content"].startswith("*Narration")
+    err, iif, text = await call(server, "convert_journal", content=xero["content"], target_format="quickbooks_iif",
+                                account_map={"6400001": "Payroll Expenses"})
+    assert not err, text
+    assert iif["source_format"] == "xero_csv" and "Payroll Expenses" in iif["content"]
+    assert await balance(server) == before - 4
+
+
+async def test_xero_names_to_a3_refused_free_without_account_map(server):
+    before = await balance(server)
+    xero = "*Narration,*Date,*AccountCode,*TaxRate,*Amount\nRent,31/03/2026,Rent,No VAT,10.00\n" \
+           "Rent,31/03/2026,Bank,No VAT,-10.00\n"
+    err, _, text = await call(server, "convert_journal", content=xero, target_format="a3")
+    assert err and "account_map" in text
+    assert await balance(server) == before
+
+
+async def test_bank_statement_csv_tool(server):
+    before = await balance(server)
+    err, data, text = await call(server, "bank_statement_csv", content=sample_statement(), target="xero")
+    assert not err, text
+    assert data["content"].startswith("*Date,*Amount") and data["movements"] > 0
+    assert data["billing"]["credits_charged"] == 1 and await balance(server) == before - 1
+    err, _, text = await call(server, "bank_statement_csv", content=sample_statement(), target="sage")
+    assert err and await balance(server) == before - 1
+
+
+async def test_bank_to_xero_requires_program_accounts(server):
+    err, _, text = await call(server, "bank_to_journal", content=sample_statement(), bank_account="090",
+                              target_format="xero_csv")
+    assert err and "suspense_account" in text
+    err, data, text = await call(server, "bank_to_journal", content=sample_statement(), bank_account="090",
+                                 suspense_account="9999", target_format="xero_csv", rules=RULES)
+    assert not err, text
+    assert ",090," in data["content"]

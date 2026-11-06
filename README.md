@@ -1,5 +1,7 @@
 # contabridge-mcp
 
+<!-- mcp-name: io.github.ArceeDev/contabridge-mcp -->
+
 An MCP server that moves bookkeeping between Spanish accounting programs and QuickBooks / Xero, built for AI agents that work for gestorías and accounting firms with many clients. It does not store any data between calls, and every result is deterministic.
 
 | Tool | Credits | What it does |

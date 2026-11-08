@@ -88,8 +88,12 @@ def _note(receipt: dict, credits: int) -> dict[str, Any]:
 
 def _file(fmt: str, text: str) -> dict[str, Any]:
     utf8 = fmt in formats.UTF8
-    raw = ("﻿" + text).encode("utf-8") if utf8 else text.encode("cp1252", "replace")
-    return {"format": fmt, "filename": formats.EXTENSIONS[fmt], "encoding": "utf-8-sig" if utf8 else "cp1252",
+    if fmt in formats.BINARY:  # content is a readable preview; save content_base64 as the file
+        raw, enc = formats.encode(fmt, text), "binary"
+    else:
+        raw = ("﻿" + text).encode("utf-8") if utf8 else text.encode("cp1252", "replace")
+        enc = "utf-8-sig" if utf8 else "cp1252"
+    return {"format": fmt, "filename": formats.EXTENSIONS[fmt], "encoding": enc,
             "content": text, "content_base64": base64.b64encode(raw).decode()}
 
 
@@ -124,14 +128,15 @@ async def convert_journal(ctx: Context, target_format: str, content: str = "", c
     """Convert a libro diario (journal) between Spanish accounting programs.
 
     Formats: `a3` (a3ASESOR/a3ECO/a3CON SUENLACE.DAT, apuntes tipo 0), `contaplus_csv` (Sage ContaPlus / Sage 50
-    Diario CSV, 142 fields), `contaplus_ascii` (XDiario.txt fixed width), `csv` (spreadsheet with header:
+    Diario CSV, 142 fields), `contaplus_ascii` (XDiario.txt fixed width), `contasol` (ContaSol APU.ods, destination only:
+    save content_base64 as APU.ods and import it in Utilidades > Importaciones), `csv` (spreadsheet with header:
     Holded, Excel, any ERP; columns auto-detected, override with column_map), `quickbooks_iif` (QuickBooks
     Desktop general journal), `quickbooks_csv` (QuickBooks Online journal import), `xero_csv` (Xero manual
     journal import). The source is auto-detected. QuickBooks/Xero accounts are names or codes, not PGC
     subaccounts: use account_map to translate them when converting to or from A3/ContaPlus.
 
     Args:
-        target_format: a3 | contaplus_csv | contaplus_ascii | csv | quickbooks_iif | quickbooks_csv | xero_csv.
+        target_format: a3 | contaplus_csv | contaplus_ascii | contasol | csv | quickbooks_iif | quickbooks_csv | xero_csv.
         content: The file as text. content_base64: raw bytes as base64 (Latin-1/CP1252 files with Ñ).
         source_format: auto (default) or one of the formats.
         account_digits: Resize every subaccount to this length (ContaPlus uses a fixed length, e.g. 8);
@@ -219,8 +224,8 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
     Args:
         bank_account: The 572 subaccount of the bank, e.g. "57200001" (for QuickBooks/Xero: that program's
             bank account name or code, and suspense_account is then required).
-        target_format: csv (default) | a3 | contaplus_csv | contaplus_ascii | quickbooks_iif | quickbooks_csv |
-            xero_csv.
+        target_format: csv (default) | a3 | contaplus_csv | contaplus_ascii | contasol | quickbooks_iif |
+            quickbooks_csv | xero_csv.
         content / content_base64: The .n43 file (base64 for CP850/Latin-1 bytes).
         rules: Ordered list, first match wins. Each: {"account": "62800000", "contains": ["IBERDROLA"] or "regex":
             "...", "common_concept": "03" (AEB concept, e.g. 03 recibos, 04 transferencias, 12 comisiones),

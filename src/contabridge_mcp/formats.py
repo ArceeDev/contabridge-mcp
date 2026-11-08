@@ -5,6 +5,8 @@
 - contaplus_csv: Sage ContaPlus 'Protocolo de comunicación' Diario in CSV (142 fields, ';'). Also read by Sage 50.
 - contaplus_ascii: the same Diario as fixed-width ASCII (XDiario.txt), first 32 fields (same layout BulmaGés writes).
 - csv: generic spreadsheet CSV with a header (Holded, Excel, any ERP export). Columns are auto-detected.
+- contasol: ContaSol (Software DELSOL) 'Importación Excel/Calc' Apuntes, APU.ods, columns A-Q (GIP.C.01.10
+  rev. 9). Write-only. ContaSol also reads contaplus_ascii (XDiario.txt) via Importaciones > ContaPlus.
 - quickbooks_iif, quickbooks_csv, xero_csv: international formats, see intl.py.
 """
 
@@ -13,17 +15,21 @@ from __future__ import annotations
 import csv
 import io
 import re
+import zipfile
+from xml.sax.saxutils import escape
 from datetime import date
 from typing import Any, Callable
 
 from . import intl
 from .journal import Entry, JournalError, Line, parse_amount, parse_date
 
-SPANISH = ("a3", "contaplus_csv", "contaplus_ascii", "csv")
+SPANISH = ("a3", "contaplus_csv", "contaplus_ascii", "contasol", "csv")
 FORMATS = SPANISH + intl.FORMATS
 EXTENSIONS = {"a3": "SUENLACE.DAT", "contaplus_csv": "XDiario.csv", "contaplus_ascii": "XDiario.txt",
+              "contasol": "APU.ods",
               "csv": "diario.csv", **intl.EXTENSIONS}
 UTF8 = ("csv", "quickbooks_csv", "xero_csv")
+BINARY = ("contasol",)  # write() returns a TSV preview; encode() turns it into the real file
 
 
 class Report:
@@ -402,6 +408,88 @@ def write_csv(entries: list[Entry], rep: Report, delimiter: str = ";", decimal_c
     return buf.getvalue()
 
 
+# ---------------------------------------------------------------- ContaSol (APU.ods)
+
+# Column types of ContaSol 'Apuntes' A-Q: n = number, d = date, s = text.
+_CS_TYPES = "ndnnnnssnnsnsnnns"
+
+
+def write_contasol(entries: list[Entry], rep: Report, diario: int = 0) -> str:
+    """ContaSol Apuntes as tab-separated rows (preview); encode() builds APU.ods from them.
+
+    A Diario, B Fecha, C Asiento, D Orden, E Cuenta, F Importe pts, G Concepto(60), H Documento(30), I Debe,
+    J Haber, K Moneda (E), L Punteo, M Tipo IVA, N Código IVA, O Departamento, P Subdepartamento, Q Imagen.
+    No header row: every row is a record.
+    """
+    rows = []
+    lengths = set()
+    for e in entries:
+        if e.number is None or not 0 < e.number < 10 ** 5:
+            raise JournalError("ContaSol necesita números de asiento de 1 a 99999 (usa start_entry_number)")
+        if len(e.lines) >= 10 ** 6:
+            raise JournalError(f"asiento {e.number}: ContaSol admite como máximo 999999 líneas por asiento")
+        for i, ln in enumerate(e.lines, 1):
+            if not ln.account.isdigit() or len(ln.account) > 10:
+                raise JournalError(f"asiento {e.number}: la cuenta {ln.account!r} no es numérica de hasta 10 "
+                                   "dígitos, como exige ContaSol (usa account_map o account_digits)")
+            lengths.add(len(ln.account))
+            text = lambda v, n, lab: rep.fit(_latin(v).replace("\t", " "), n, lab)  # noqa: E731
+            rows.append("\t".join([str(diario), e.date.strftime("%d/%m/%Y"), str(e.number), str(i), ln.account,
+                                    "0", text(ln.concept, 60, "concepto"), text(ln.document, 30, "documento"),
+                                    _plain(ln.debit), _plain(ln.credit), "E", "0", "", "0", "0", "0", ""]))
+    if len(lengths) > 1:
+        rep.warnings.append("ContaSol exige que todas las subcuentas tengan los dígitos del nivel de la empresa; "
+                            f"aquí hay longitudes {sorted(lengths)}. Usa account_digits con el valor de tu empresa.")
+    return "\r\n".join(rows) + "\r\n"
+
+
+_ODS_MIME = "application/vnd.oasis.opendocument.spreadsheet"
+_ODS_MANIFEST = ('<?xml version="1.0" encoding="UTF-8"?>\n<manifest:manifest xmlns:manifest="urn:oasis:names:tc:'
+                 'opendocument:xmlns:manifest:1.0" manifest:version="1.2"><manifest:file-entry manifest:full-path="/" '
+                 f'manifest:version="1.2" manifest:media-type="{_ODS_MIME}"/><manifest:file-entry '
+                 'manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>')
+
+
+def _ods_cell(kind: str, v: str) -> str:
+    if v == "":
+        return "<table:table-cell/>"
+    if kind == "n":
+        return f'<table:table-cell office:value-type="float" office:value="{v}"><text:p>{v}</text:p></table:table-cell>'
+    if kind == "d":
+        d, m, y = v.split("/")
+        return (f'<table:table-cell office:value-type="date" office:date-value="{y}-{m}-{d}"><text:p>{v}</text:p>'
+                "</table:table-cell>")
+    return f'<table:table-cell office:value-type="string"><text:p>{escape(v)}</text:p></table:table-cell>'
+
+
+def encode_ods(tsv: str, types: str = _CS_TYPES, sheet: str = "APU") -> bytes:
+    """Minimal OpenDocument spreadsheet, byte-for-byte deterministic (fixed zip timestamps)."""
+    rows = "".join("<table:table-row>" + "".join(_ods_cell(t, v) for t, v in zip(types, ln.split("\t"))) +
+                   "</table:table-row>" for ln in tsv.split("\r\n") if ln)
+    content = ('<?xml version="1.0" encoding="UTF-8"?>\n<office:document-content '
+               'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+               'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+               'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">'
+               f'<office:body><office:spreadsheet><table:table table:name="{sheet}">{rows}</table:table>'
+               "</office:spreadsheet></office:body></office:document-content>")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, data, method in (("mimetype", _ODS_MIME, zipfile.ZIP_STORED),
+                                   ("META-INF/manifest.xml", _ODS_MANIFEST, zipfile.ZIP_DEFLATED),
+                                   ("content.xml", content, zipfile.ZIP_DEFLATED)):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = method
+            info.external_attr = 0o644 << 16
+            z.writestr(info, data.encode("utf-8"))
+    return buf.getvalue()
+
+
+def encode(fmt: str, text: str) -> bytes:
+    if fmt == "contasol":
+        return encode_ods(text)
+    raise JournalError(f"{fmt} no es un formato binario")
+
+
 # ---------------------------------------------------------------- dispatch
 
 def detect(text: str) -> str:
@@ -453,6 +541,8 @@ def _read(text: str, fmt: str, rep: Report, column_map: dict[str, str] | None, d
         return read_contaplus_ascii(text, rep)
     if fmt == "csv":
         return read_csv(text, rep, column_map, delimiter)
+    if fmt == "contasol":
+        raise JournalError("contasol es solo formato de destino; exporta desde ContaSol a csv o contaplus_ascii")
     raise JournalError(f"formato de origen desconocido {fmt!r}; válidos: auto, {', '.join(FORMATS)}")
 
 
@@ -465,6 +555,8 @@ def write(entries: list[Entry], fmt: str, rep: Report, **opts: Any) -> str:
         return write_contaplus_csv(entries, rep)
     if fmt == "contaplus_ascii":
         return write_contaplus_ascii(entries, rep)
+    if fmt == "contasol":
+        return write_contasol(entries, rep)
     if fmt == "csv":
         return write_csv(entries, rep, opts.get("delimiter") or ";", opts.get("decimal_comma", True))
     raise JournalError(f"formato de destino desconocido {fmt!r}; válidos: {', '.join(FORMATS)}")

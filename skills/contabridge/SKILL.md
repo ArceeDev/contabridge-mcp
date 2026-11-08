@@ -31,12 +31,12 @@ Needs the `contabridge-mcp` server. Paid tools use KeyFlint credits. A file the 
 | To check a diario before importing it | `validate_journal` | 1 |
 | Resize a subaccount, identify a file format | `resize_account`, `detect_format` | 0 |
 
-Formats: `a3` (512-byte records starting with `5`, or 256 starting with `4`), `contaplus_csv` (142 fields separated by `;`), `contaplus_ascii` (fixed width), `csv` (any spreadsheet with a header).
+Formats: `a3` (512-byte records starting with `5`, or 256 starting with `4`), `contaplus_csv` (142 fields separated by `;`), `contaplus_ascii` (fixed width), `contasol` (ContaSol `APU.ods`, destination only: save `content_base64` as `APU.ods`), `csv` (any spreadsheet with a header).
 
 ## Workflow
 
 1. **Pass the file untouched.** Send raw bytes as `content_base64` when it has Ñ or accents. Never retype it.
-2. **Ask the target subaccount length** for ContaPlus (often 8 or 10) and pass `account_digits`. A3 accepts 6 to 12.
+2. **Ask the target subaccount length** for ContaPlus or ContaSol (often 8 or 10) and pass `account_digits`. A3 accepts 6 to 12.
 3. **Convert or book.** For `bank_to_journal` ask the 572 subaccount of the bank and build `rules` from the user's habits (supplier name → 4100xxxx or 62xxxxxx, AEB concept 17 commissions → 626, payroll → 465). First match wins.
 4. **Save `content_base64` decoded to disk** with the returned `filename` (`SUENLACE.DAT`, `XDiario.csv`). Do not save `content` as UTF-8 for A3 or ContaPlus.
 5. **Report** `summary` (entries, totals, balanced), every `warnings` line (truncated concepts, skipped invoice records), and for bank files the `unmatched` movements left in 555 for the user to assign.

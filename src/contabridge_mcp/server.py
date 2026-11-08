@@ -118,7 +118,7 @@ def _emit(entries: list[journal.Entry], target: str, rep: formats.Report, opts: 
     return {**_file(target, text), "summary": journal.summary(entries), "issues": issues, "warnings": rep.done()}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Convert journal between accounting programs", annotations=LOCAL, meta=UI)
 async def convert_journal(ctx: Context, target_format: str, content: str = "", content_base64: str = "",
                           source_format: str = "auto", account_digits: int = 0, account_split: int = 4,
                           account_map: dict[str, str] | None = None, start_entry_number: int = 0,
@@ -177,7 +177,7 @@ async def convert_journal(ctx: Context, target_format: str, content: str = "", c
             "billing": _note(receipt, PRICES["convert_journal"])}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Validate journal before import", annotations=LOCAL, meta=UI)
 async def validate_journal(ctx: Context, content: str = "", content_base64: str = "", source_format: str = "auto",
                            fiscal_year: int = 0, column_map: dict[str, str] | None = None,
                            csv_delimiter: str = "", include_entries: bool = False,
@@ -206,7 +206,7 @@ async def validate_journal(ctx: Context, content: str = "", content_base64: str 
     return {**out, "billing": _note(receipt, PRICES["validate_journal"])}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Book Norma 43 bank statement as journal", annotations=LOCAL, meta=UI)
 async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = "csv", content: str = "",
                           content_base64: str = "", rules: list[dict[str, Any]] | None = None,
                           suspense_account: str = "", bank_accounts: dict[str, str] | None = None,
@@ -270,7 +270,7 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
             "billing": _note(receipt, PRICES["bank_to_journal"])}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Build journal import file", annotations=LOCAL, meta=UI)
 async def build_journal(ctx: Context, entries: list[dict[str, Any]], target_format: str,
                         account_digits: int = 0, account_split: int = 4, start_entry_number: int = 0,
                         company_code: str = "00001", a3_format: int = 5, decimal_comma: bool = True,
@@ -304,7 +304,7 @@ async def build_journal(ctx: Context, entries: list[dict[str, Any]], target_form
     return {**out, "billing": _note(receipt, PRICES["build_journal"])}
 
 
-@mcp.tool(annotations=LOCAL, meta=UI)
+@mcp.tool(title="Convert bank statement to bank-feed CSV", annotations=LOCAL, meta=UI)
 async def bank_statement_csv(ctx: Context, target: str, content: str = "", content_base64: str = "",
                              date_style: str = "", account: str = "") -> dict[str, Any]:
     """Turn a Norma 43 (Cuaderno 43) statement into a bank statement CSV that Xero or QuickBooks Online import.
@@ -332,7 +332,7 @@ async def bank_statement_csv(ctx: Context, target: str, content: str = "", conte
             "billing": _note(receipt, PRICES["bank_statement_csv"])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(title="Resize PGC subaccount", annotations=LOCAL)
 def resize_account(account: str, digits: int, split: int = 4) -> dict[str, Any]:
     """Resize or expand a Spanish subaccount code. Free. '430.1' -> '43000001'; 4300001 (7) -> 43000001 (8)."""
     with _user_errors():
@@ -340,7 +340,7 @@ def resize_account(account: str, digits: int, split: int = 4) -> dict[str, Any]:
     return {"account": out, "group": journal.PGC_GROUPS.get(out[:1])}
 
 
-@mcp.tool(annotations=LOCAL)
+@mcp.tool(title="Detect accounting file format", annotations=LOCAL)
 def detect_format(content: str = "", content_base64: str = "") -> dict[str, Any]:
     """Tell which accounting import format a file is (a3, contaplus_csv, contaplus_ascii, csv, quickbooks_iif,
     quickbooks_csv, xero_csv). Free."""
@@ -349,7 +349,7 @@ def detect_format(content: str = "", content_base64: str = "") -> dict[str, Any]
         return {"format": formats.detect(text), "encoding": encoding}
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(title="Show tool prices", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
 def pricing() -> dict[str, Any]:
     """Credit price of each tool and where to buy credits. Free."""
     return {"credits_per_call": {**PRICES, "resize_account": 0, "detect_format": 0},
@@ -357,7 +357,7 @@ def pricing() -> dict[str, Any]:
             "buy_credits": billing.checkout_url or "Set KEYFLINT_CHECKOUT_URL"}
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), meta=UI)
+@mcp.tool(title="Check credit balance", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False), meta=UI)
 async def credits_balance(ctx: Context) -> dict[str, Any]:
     """Remaining credits on your KeyFlint license. Free."""
     return await billing.balance(_headers(ctx))

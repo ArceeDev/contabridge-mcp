@@ -3,7 +3,7 @@
   "name": "io.github.ArceeDev/contabridge-mcp",
   "title": "ContaBridge",
   "description": "Convert journals between A3, ContaPlus/Sage 50, QuickBooks, Xero and CSV; bank files to entries.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "websiteUrl": "https://mcp.keyflint.dev",
   "repository": {
     "url": "https://github.com/ArceeDev/contabridge-mcp",
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "contabridge-mcp",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       },

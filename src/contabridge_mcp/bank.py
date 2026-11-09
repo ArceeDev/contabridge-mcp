@@ -171,17 +171,26 @@ def movements_to_entries(res: n43.ParseResult, bank_account: str, rules: list[Ru
 
 # --- Non-Norma 43 statements (bank Excel/CSV exports, or a movements list read by the assistant) -----------
 
-_HEAD = {
+_HEAD = {  # alias order = priority (an earlier alias wins over a column further left)
     "date": ("fecha", "fecha operacion", "fecha operación", "f. operacion", "f. operación", "fecha contable",
-             "date", "booking date", "transaction date", "fecha valor", "f. valor", "value date"),
-    "value_date": ("fecha valor", "f. valor", "value date"),
-    "amount": ("importe", "importe eur", "importe (eur)", "importe (€)", "cantidad", "amount", "movimiento"),
+             "date", "booking date", "transaction date", "completed date", "started date", "created (utc)",
+             "created", "fecha valor", "f. valor", "f.valor", "value date"),
+    "value_date": ("fecha valor", "f. valor", "f.valor", "value date"),
+    # Net first: Stripe (Net) and PayPal (Neto/Net) pay out net of fees; Revolut has Amount + Fee (see "fee").
+    "amount": ("neto", "net", "importe", "importe eur", "importe (eur)", "importe (€)", "cantidad", "amount",
+               "bruto", "gross", "movimiento"),
     "debit": ("cargo", "cargos", "debe", "debit", "salida", "pagos"),
     "credit": ("abono", "abonos", "haber", "credit", "entrada", "cobros", "ingresos"),
     "text": ("concepto", "descripcion", "descripción", "concepto común", "description", "concept", "texto",
-             "detalle", "observaciones", "beneficiario", "referencia", "más datos", "mas datos"),
+             "detalle", "nombre", "name", "asunto", "subject", "observaciones", "beneficiario", "referencia",
+             "más datos", "mas datos", "movimiento"),
+    "fee": ("fee", "tarifa", "comisión", "comision"),
+    "state": ("state", "status", "estado"),
     "balance": ("saldo", "balance", "saldo (eur)"),
 }
+# Revolut State / PayPal Estado values that never moved money.
+_NOT_BOOKED = {"reverted", "declined", "failed", "pending", "pendiente", "denied", "denegado", "cancelled",
+               "canceled", "cancelado", "revertido", "rechazado", "fallido"}
 MAX_ROWS = 100_000
 
 
@@ -234,9 +243,10 @@ def movements_from_csv(text: str) -> tuple[n43.ParseResult, dict[str, Any]]:
         names = [_norm(c) for c in row]
         found: dict[str, int] = {}
         for key, aliases in _HEAD.items():
-            for c, name in enumerate(names):
-                if name in aliases and c not in found.values():
-                    found.setdefault(key, c)
+            for alias in aliases:
+                c = next((c for c, name in enumerate(names) if name == alias and c not in found.values()), None)
+                if c is not None:
+                    found[key] = c
                     break
         if "date" in found and ("amount" in found or ("debit" in found and "credit" in found)):
             header_at, cols = r, found
@@ -250,10 +260,15 @@ def movements_from_csv(text: str) -> tuple[n43.ParseResult, dict[str, Any]]:
         if not any(c.strip() for c in row):
             continue
         get = lambda k: row[cols[k]].strip() if k in cols and cols[k] < len(row) else ""  # noqa: E731
+        if get("state").lower() in _NOT_BOOKED:
+            skipped.append(r)
+            continue
         try:
             when = parse_date(get("date"), f"fila {r}: ").isoformat()
             if "amount" in cols:
                 cents = parse_amount(get("amount"), f"fila {r}: ")
+                if "fee" in cols and _norm(rows[header_at][cols["amount"]]) == "amount":
+                    cents -= abs(parse_amount(get("fee"), f"fila {r}: "))  # Revolut: Amount + separate Fee
             else:
                 cents = parse_amount(get("credit"), f"fila {r}: ") - abs(parse_amount(get("debit"), f"fila {r}: "))
         except JournalError:

@@ -19,11 +19,11 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from . import __version__, bank, formats, intl, invoices as invoices_mod, journal, n43
-from . import apps
+from . import apps, pdfbank
 from .billing import Billing
 
 DEFAULT_PRICES = {"convert_journal": 2, "validate_journal": 1, "bank_to_journal": 3, "build_journal": 2,
-                  "bank_statement_csv": 1, "invoices_to_journal": 3}
+                  "bank_statement_csv": 1, "invoices_to_journal": 3, "pdf_bank_to_journal": 3}
 MAX_BYTES = int(os.environ.get("CONTABRIDGE_MAX_BYTES", 10_000_000))
 PREVIEW = 50
 
@@ -56,6 +56,9 @@ mcp = MCPServer(
         "VAT, recargo de equivalencia and IRPF split out, checks base + IVA - IRPF = total and returns the VAT book "
         "summary; invoices that do not add up go to `review`, never booked. `bank_to_journal` also reads the bank's "
         "CSV export or a movements list and settles pending invoices (`open_items`) against the 430/400 subaccount. "
+        "`pdf_bank_to_journal` reads a digital bank statement PDF (selectable text; no OCR, no AI), checks every row "
+        "against the running balance (previous balance + amount = printed balance) and the closing balance, flags "
+        "rows that do not add up and returns the journal (ContaSol APU.ods, A3, ContaPlus...) or a Norma 43 file. "
         "`build_journal` writes entries you composed into any of the formats. `bank_statement_csv` turns a Norma 43 file "
         "into a Xero or QuickBooks Online bank statement CSV. `validate_journal` runs the checks "
         "these programs run on import (balanced entries, debit xor credit, PGC groups, fiscal year). "
@@ -69,7 +72,7 @@ mcp = MCPServer(
 UI = apps.ui_meta("contabridge")
 apps.register(mcp, slug="contabridge", name="ContaBridge", icon="ledger", version=__version__, lang="es",
               buy_url=lambda: billing.checkout_url,
-              labels={"convert_journal": "Conversión de diario", "validate_journal": "Validación de diario", "bank_to_journal": "Extracto a asientos", "build_journal": "Fichero de asientos", "invoices_to_journal": "Facturas a asientos", "bank_statement_csv": "Extracto a CSV", "credits_balance": "Saldo de créditos"})
+              labels={"convert_journal": "Conversión de diario", "validate_journal": "Validación de diario", "bank_to_journal": "Extracto a asientos", "build_journal": "Fichero de asientos", "invoices_to_journal": "Facturas a asientos", "pdf_bank_to_journal": "Extracto PDF a asientos", "bank_statement_csv": "Extracto a CSV", "credits_balance": "Saldo de créditos"})
 
 @contextmanager
 def _user_errors() -> Iterator[None]:
@@ -295,6 +298,89 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
     stats["unmatched"] = stats["unmatched"][:200]
     return {**out, "bank": stats, "source": source, "norma43_issues": n43_errors[:50],
             "billing": _note(receipt, PRICES["bank_to_journal"])}
+
+
+@mcp.tool(title="Book bank statement PDF as journal", annotations=LOCAL, meta=UI)
+async def pdf_bank_to_journal(ctx: Context, content_base64: str, target_format: str = "contasol",
+                              bank_account: str = "57200001", rules: list[dict[str, Any]] | None = None,
+                              suspense_account: str = "", open_items: list[dict[str, Any]] | None = None,
+                              window_days: int = 60, strict_balance: bool = False, use_value_date: bool = False,
+                              account_digits: int = 0, account_split: int = 4, start_entry_number: int = 1,
+                              company_code: str = "00001", a3_format: int = 5, decimal_comma: bool = True,
+                              date_style: str = "", xero_tax_rate: str = "No VAT", account_ccc: str = "",
+                              holder: str = "") -> dict[str, Any]:
+    """Read a digital bank statement PDF (Revolut, Wise, N26, CaixaBank, BBVA, Santander... downloaded from online
+    banking, with selectable text) and turn it into journal entries or a Norma 43 file.
+
+    Deterministic: the movements table is located by its header (Fecha, Concepto, Cargo/Abono or Importe, Saldo)
+    and each value is read from its column. No OCR and no AI: scanned PDFs are refused, not guessed. Every row is
+    checked: previous balance + amount = printed balance, and opening + money in - money out = closing balance.
+    Rows that do not add up are booked but listed in `flagged_rows` with status "mismatch"; rows whose sign
+    (cargo/abono) cannot be proven go to status "review" and are NOT booked. Check `balance_check.balanced`.
+
+    Args:
+        content_base64: The PDF file bytes in base64.
+        target_format: contasol (APU.ods, default) | a3 | contaplus_csv | contaplus_ascii | csv | quickbooks_iif |
+            quickbooks_csv | xero_csv | norma43 (a .n43 file to import in any program that reads Cuaderno 43).
+        bank_account: The 572 subaccount of the bank (default 57200001).
+        rules / suspense_account / open_items / window_days: As in bank_to_journal.
+        strict_balance: true refuses to produce any file (and charges nothing) unless every row and the closing
+            balance add up.
+        account_ccc: For norma43 when the PDF has no Spanish IBAN: 20-digit CCC for record 11.
+        holder: Account holder name for the Norma 43 header (optional).
+    """
+    with _user_errors():
+        if not content_base64:
+            raise journal.JournalError("indica el PDF en content_base64")
+        try:
+            raw = base64.b64decode("".join(content_base64.split()), validate=True)
+        except ValueError as exc:
+            raise journal.JournalError("content_base64 no es base64 válido") from exc
+        if len(raw) > MAX_BYTES:
+            raise journal.JournalError(f"el PDF ocupa {len(raw)} bytes; el máximo es {MAX_BYTES}")
+        to_n43 = target_format == "norma43"
+        if not to_n43 and target_format not in formats.FORMATS:
+            raise journal.JournalError(f"target_format debe ser norma43 o uno de {', '.join(formats.FORMATS)}")
+        spanish = target_format in formats.SPANISH
+        if spanish and (not bank_account.strip().isdigit() or not bank_account.strip().startswith("57")):
+            raise journal.JournalError("bank_account debe ser una subcuenta numérica del grupo 57 (p. ej. 57200001)")
+        if not to_n43 and not spanish and not suspense_account.strip():
+            raise journal.JournalError("para QuickBooks/Xero indica bank_account y suspense_account con las "
+                                       "cuentas de ese programa")
+        if not 0 <= window_days <= 3650:
+            raise journal.JournalError("window_days entre 0 y 3650")
+        parsed_rules = bank.build_rules(rules or [])
+        items = bank.build_open_items(open_items or [])
+        st = await asyncio.to_thread(pdfbank.read_statement, raw)
+        report = pdfbank.summary(st)
+        if strict_balance and not st.checks["balanced"]:
+            raise journal.JournalError(
+                f"el extracto no cuadra ({st.checks['mismatch']} filas descuadradas, {st.checks['review']} en "
+                f"revisión, cierre calculado {st.checks['computed_closing']} frente a {st.checks['printed_closing']}); "
+                f"no se genera fichero ni se cobra. Usa strict_balance=false para ver las filas marcadas")
+        if to_n43:
+            text, n43_warn = pdfbank.to_norma43(st, holder, account_ccc)
+            out = {**_file("contaplus_ascii", text), "format": "norma43", "filename": "extracto.n43",
+                   "warnings": n43_warn}
+        else:
+            res = pdfbank.to_parse_result(st)
+            if not res.accounts[0].movements:
+                raise journal.JournalError("ninguna fila del PDF tiene el signo verificado; no hay nada que contabilizar")
+            suspense = suspense_account.strip() or "555".ljust(len(bank_account.strip()), "0")
+            entries, stats = await asyncio.to_thread(bank.movements_to_entries, res, bank_account, parsed_rules,
+                                                     suspense, None, use_value_date, items, window_days)
+            entries = _prepare(entries, account_digits, account_split, None, start_entry_number or 1)
+            opts = {"company_code": company_code, "a3_format": a3_format, "delimiter": ";",
+                    "decimal_comma": decimal_comma, "date_style": date_style, "tax_rate": xero_tax_rate}
+            out = _emit(entries, target_format, formats.Report(), opts, True, None)
+            stats["unmatched_total"] = len(stats["unmatched"])
+            stats["unmatched"] = stats["unmatched"][:200]
+            out["bank"] = stats
+    billing.client(_headers(ctx)).check()
+    async with billing.charge(PRICES["pdf_bank_to_journal"], "pdf_bank_to_journal", _headers(ctx)) as receipt:
+        pass
+    return {**out, "statement": report, "source": {"type": "pdf"},
+            "billing": _note(receipt, PRICES["pdf_bank_to_journal"])}
 
 
 @mcp.tool(title="Build journal import file", annotations=LOCAL, meta=UI)

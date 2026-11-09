@@ -28,6 +28,7 @@ Needs the `contabridge-mcp` server. Paid tools use KeyFlint credits. A file the 
 | A diario from one program to import into another | `convert_journal` | 2 |
 | Invoices (PDF, photo, Facturae) booked with VAT | `invoices_to_journal` | 3 |
 | A bank statement (.n43, bank CSV or Excel read by you) booked as entries | `bank_to_journal` | 3 |
+| A bank statement PDF (digital, selectable text) booked as entries or turned into .n43 | `pdf_bank_to_journal` | 3 |
 | Entries you composed (invoices, payroll, accruals) as an import file | `build_journal` | 2 |
 | To check a diario before importing it | `validate_journal` | 1 |
 | Resize a subaccount, identify a file format | `resize_account`, `detect_format` | 0 |

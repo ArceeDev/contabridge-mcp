@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "contabridge-mcp",
   "display_name": "ContaBridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Convierte el libro diario entre A3 (SUENLACE.DAT), ContaPlus, Sage 50 y CSV, y pasa extractos Norma 43 a asientos.",
   "long_description": "Puente contable para gestorías: convierte y valida ficheros de importación de asientos entre A3, ContaPlus/Sage 50 y CSV, genera asientos desde extractos Norma 43 con reglas y redimensiona subcuentas. Pago por uso con créditos KeyFlint.",
   "author": {
@@ -47,6 +47,10 @@
     {
       "name": "bank_to_journal",
       "description": "Turn a Norma 43 (Cuaderno 43) bank statement into journal entries ready to import."
+    },
+    {
+      "name": "invoices_to_journal",
+      "description": "Convert issued and received invoices into balanced journal entries with VAT, surcharge and IRPF split out."
     },
     {
       "name": "build_journal",

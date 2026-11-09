@@ -18,12 +18,12 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import __version__, bank, formats, intl, journal, n43
+from . import __version__, bank, formats, intl, invoices as invoices_mod, journal, n43
 from . import apps
 from .billing import Billing
 
 DEFAULT_PRICES = {"convert_journal": 2, "validate_journal": 1, "bank_to_journal": 3, "build_journal": 2,
-                  "bank_statement_csv": 1}
+                  "bank_statement_csv": 1, "invoices_to_journal": 3}
 MAX_BYTES = int(os.environ.get("CONTABRIDGE_MAX_BYTES", 10_000_000))
 PREVIEW = 50
 
@@ -52,6 +52,10 @@ mcp = MCPServer(
         "(Holded, Excel, any ERP), QuickBooks (Desktop IIF, Online CSV) and Xero (manual journal CSV), resizing subaccounts (4300001 -> 43000001) and remapping accounts. "
         "`bank_to_journal` turns a Norma 43 statement into journal entries against the 572 bank subaccount with "
         "your rules; unmatched movements go to a suspense account (555) and are listed, never guessed. "
+        "`invoices_to_journal` books issued and received invoices (facturas emitidas/recibidas, rectificativas) with "
+        "VAT, recargo de equivalencia and IRPF split out, checks base + IVA - IRPF = total and returns the VAT book "
+        "summary; invoices that do not add up go to `review`, never booked. `bank_to_journal` also reads the bank's "
+        "CSV export or a movements list and settles pending invoices (`open_items`) against the 430/400 subaccount. "
         "`build_journal` writes entries you composed into any of the formats. `bank_statement_csv` turns a Norma 43 file "
         "into a Xero or QuickBooks Online bank statement CSV. `validate_journal` runs the checks "
         "these programs run on import (balanced entries, debit xor credit, PGC groups, fiscal year). "
@@ -65,7 +69,7 @@ mcp = MCPServer(
 UI = apps.ui_meta("contabridge")
 apps.register(mcp, slug="contabridge", name="ContaBridge", icon="ledger", version=__version__, lang="es",
               buy_url=lambda: billing.checkout_url,
-              labels={"convert_journal": "Conversión de diario", "validate_journal": "Validación de diario", "bank_to_journal": "Extracto a asientos", "build_journal": "Fichero de asientos", "bank_statement_csv": "Extracto a CSV", "credits_balance": "Saldo de créditos"})
+              labels={"convert_journal": "Conversión de diario", "validate_journal": "Validación de diario", "bank_to_journal": "Extracto a asientos", "build_journal": "Fichero de asientos", "invoices_to_journal": "Facturas a asientos", "bank_statement_csv": "Extracto a CSV", "credits_balance": "Saldo de créditos"})
 
 @contextmanager
 def _user_errors() -> Iterator[None]:
@@ -213,8 +217,10 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
                           use_value_date: bool = False, account_digits: int = 0, account_split: int = 4,
                           start_entry_number: int = 1, company_code: str = "00001", a3_format: int = 5,
                           decimal_comma: bool = True, date_style: str = "",
-                          xero_tax_rate: str = "No VAT") -> dict[str, Any]:
-    """Turn a Norma 43 (Cuaderno 43) bank statement into journal entries ready to import.
+                          xero_tax_rate: str = "No VAT", movements: list[dict[str, Any]] | None = None,
+                          open_items: list[dict[str, Any]] | None = None,
+                          window_days: int = 60) -> dict[str, Any]:
+    """Turn a bank statement (Norma 43, the bank's Excel/CSV export, or a movements list) into journal entries.
 
     One entry per movement: abono -> Debe bank / Haber counterpart; cargo -> Debe counterpart / Haber bank.
     The counterpart comes from the first matching rule; with no match it goes to `suspense_account`
@@ -226,7 +232,16 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
             bank account name or code, and suspense_account is then required).
         target_format: csv (default) | a3 | contaplus_csv | contaplus_ascii | contasol | quickbooks_iif |
             quickbooks_csv | xero_csv.
-        content / content_base64: The .n43 file (base64 for CP850/Latin-1 bytes).
+        content / content_base64: The .n43 file (base64 for CP850/Latin-1 bytes), or the bank's CSV export
+            (Excel saved as CSV: a header row with fecha + importe, or cargo + abono, and concepto).
+        movements: Instead of a file, [{"date": "2026-03-05", "amount": "-121.00", "text": "IBERDROLA"}] for
+            statements read from Excel or PDF (+ money in, - money out).
+        open_items: Pending invoices to settle FIRST, before rules: [{"account": "43000012", "amount": "1210.00",
+            "reference": "F-2026-031", "name": "Talleres Ruiz", "date": "2026-02-28"}]. Signed as the bank sees it
+            (+ cobro de cliente, - pago a proveedor). A movement is booked against the customer/supplier subaccount
+            only on the same amount AND a unique reference or name in the bank text (or a unique amount within
+            window_days). Ties are listed in open_items.ambiguous and never guessed. invoices_to_journal returns
+            these items ready to pass here.
         rules: Ordered list, first match wins. Each: {"account": "62800000", "contains": ["IBERDROLA"] or "regex":
             "...", "common_concept": "03" (AEB concept, e.g. 03 recibos, 04 transferencias, 12 comisiones),
             "direction": "cargo"|"abono", "concept": optional fixed text}. Text matching is case-insensitive
@@ -237,8 +252,20 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
         start_entry_number: First entry number (default 1).
     """
     with _user_errors():
-        text, _ = n43.read_input(content, content_base64, MAX_BYTES)
+        text = n43.read_input(content, content_base64, MAX_BYTES)[0] if (content or content_base64) else ""
+        if not text and not movements:
+            raise journal.JournalError("indica el extracto en content/content_base64 o la lista movements")
         parsed_rules = bank.build_rules(rules or [])
+        items = bank.build_open_items(open_items or [])
+        if not 0 <= window_days <= 3650:
+            raise journal.JournalError("window_days entre 0 y 3650")
+        source: dict[str, Any] = {"type": "movements"} if movements else {"type": "norma43"}
+        csv_res = None
+        if movements:
+            csv_res = bank.movements_from_list(movements)
+        elif not text.lstrip("\ufeff").startswith("11"):
+            csv_res, info = bank.movements_from_csv(text)
+            source = {"type": "csv", **info}
         if target_format not in formats.FORMATS:
             raise journal.JournalError(f"target_format debe ser uno de {', '.join(formats.FORMATS)}")
         spanish = target_format in formats.SPANISH
@@ -249,11 +276,11 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
                                        "cuentas de ese programa (p. ej. '090' y '9999' en Xero)")
     billing.client(_headers(ctx)).check()
     with _user_errors():
-        res = await asyncio.to_thread(n43.parse, text)
+        res = csv_res or await asyncio.to_thread(n43.parse, text)
         n43_errors = [i for i in res.issues if i.get("severity") == "error"]
         suspense = suspense_account.strip() or "555".ljust(len(bank_account.strip()), "0")
         entries, stats = await asyncio.to_thread(bank.movements_to_entries, res, bank_account, parsed_rules,
-                                                 suspense, bank_accounts, use_value_date)
+                                                 suspense, bank_accounts, use_value_date, items, window_days)
         if not entries:
             raise journal.JournalError("el extracto no contiene movimientos")
         entries = _prepare(entries, account_digits, account_split, None, start_entry_number or 1)
@@ -266,7 +293,7 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
         pass
     stats["unmatched_total"] = len(stats["unmatched"])
     stats["unmatched"] = stats["unmatched"][:200]
-    return {**out, "bank": stats, "norma43_issues": n43_errors[:50],
+    return {**out, "bank": stats, "source": source, "norma43_issues": n43_errors[:50],
             "billing": _note(receipt, PRICES["bank_to_journal"])}
 
 
@@ -302,6 +329,65 @@ async def build_journal(ctx: Context, entries: list[dict[str, Any]], target_form
     async with billing.charge(PRICES["build_journal"], "build_journal", _headers(ctx)) as receipt:
         pass
     return {**out, "billing": _note(receipt, PRICES["build_journal"])}
+
+
+@mcp.tool(title="Book invoices with VAT as journal", annotations=LOCAL, meta=UI)
+async def invoices_to_journal(ctx: Context, invoices: list[dict[str, Any]], target_format: str = "csv",
+                              accounts: dict[str, str] | None = None, party_accounts: dict[str, str] | None = None,
+                              vat_accounts: dict[str, str] | None = None, account_digits: int = 0,
+                              account_split: int = 4, start_entry_number: int = 1, company_code: str = "00001",
+                              a3_format: int = 5, decimal_comma: bool = True, fiscal_year: int = 0,
+                              date_style: str = "", xero_tax_rate: str = "No VAT") -> dict[str, Any]:
+    """Book issued and received invoices (facturas emitidas y recibidas) as journal entries with VAT split out.
+
+    Read each invoice (PDF, photo, Facturae, email) yourself and pass its figures; this tool does the bookkeeping
+    deterministically. Per invoice: {"kind": "issued"|"received", "number": "F-2026-031", "date": "2026-02-28",
+    "nif": "B12345678", "name": "Talleres Ruiz SL", "taxes": [{"base": "1000.00", "rate": "21", "vat": "210.00"
+    (optional, checked), "recargo_rate": "5.2" (optional)}], "irpf_rate": "15" or "irpf_amount": "150.00"
+    (optional), "total": "1060.00" (optional but recommended: checked), "account": "43000012" (optional),
+    "counterpart_account": "62300000" (optional, default 700 / 600), "concept": optional}.
+    Shortcut for one VAT rate: "base" + "vat_rate". Negative amounts = factura rectificativa (sides swap).
+
+    Issued: Debe 430 total (+ 473 IRPF retenido por el cliente) / Haber 700 base + 477 IVA. Received: Debe 600
+    base + 472 IVA / Haber 4751 IRPF + 400 total. Tax is recomputed (base x rate, half up); a 1-cent difference
+    with the invoice total is absorbed in the largest tax line, more than that sends the invoice to `review`
+    with the reason, unbooked. Duplicates (same kind + NIF + number) also go to `review`.
+
+    Args:
+        accounts: Override default roots {customers 430, suppliers 400, sales 700, purchases 600, vat_output 477,
+            vat_input 472, irpf_withheld 4751, irpf_suffered 473}.
+        party_accounts: {NIF: subaccount}, e.g. {"B12345678": "43000012"}. Invoices with no account are booked to
+            the generic 430/400 and listed in generic_party_account so the accountant assigns them.
+        vat_accounts: {rate: subaccount}, e.g. {"21": "47700021", "10": "47700010", "re5.2": "47700052"}.
+        target_format / account_digits / company_code / ...: as in build_journal.
+
+    Returns the import file, `vat_summary` (base and cuota per rate for the libro registro / modelo 303),
+    `vat_register` (one row per invoice and rate), `review` and `open_items` to pass to bank_to_journal.
+    """
+    with _user_errors():
+        if target_format not in formats.FORMATS:
+            raise journal.JournalError(f"target_format debe ser uno de {', '.join(formats.FORMATS)}")
+        entries, stats = invoices_mod.invoices_to_entries(invoices, accounts, party_accounts, vat_accounts,
+                                                      account_digits)
+        if not entries:
+            raise journal.JournalError("ninguna factura se pudo contabilizar: " + "; ".join(
+                str(r.get("reason")) for r in stats["review"][:5]))
+        open_items = stats.pop("open_items")
+        if account_digits:
+            for o in open_items:
+                o["account"] = journal.resize_account(o["account"], account_digits, account_split)
+        entries = _prepare(entries, account_digits, account_split, None, start_entry_number or 1)
+    billing.client(_headers(ctx)).check()
+    rep = formats.Report()
+    opts = {"company_code": company_code, "a3_format": a3_format, "delimiter": ";", "decimal_comma": decimal_comma,
+            "date_style": date_style, "tax_rate": xero_tax_rate}
+    with _user_errors():
+        out = _emit(entries, target_format, rep, opts, True, fiscal_year or None)
+    async with billing.charge(PRICES["invoices_to_journal"], "invoices_to_journal", _headers(ctx)) as receipt:
+        pass
+    stats["vat_register"] = stats["vat_register"][:500]
+    return {**out, "invoices": stats, "open_items": open_items[:2000],
+            "billing": _note(receipt, PRICES["invoices_to_journal"])}
 
 
 @mcp.tool(title="Convert bank statement to bank-feed CSV", annotations=LOCAL, meta=UI)

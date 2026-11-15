@@ -210,3 +210,45 @@ async def test_bank_to_xero_requires_program_accounts(server):
                                  suspense_account="9999", target_format="xero_csv", rules=RULES)
     assert not err, text
     assert ",090," in data["content"]
+
+
+async def test_duplicate_call_same_inputs_charges_once(server):
+    """A client retry (same tool, same inputs) inside the dedupe window replays the debit."""
+    before = await balance(server)
+    args = dict(content=DIARIO, target_format="contaplus_csv", account_digits=8)
+    err1, first, t1 = await call(server, "convert_journal", **args)
+    err2, second, t2 = await call(server, "convert_journal", **args)
+    assert not err1 and not err2, (t1, t2)
+    assert first["content_base64"] == second["content_base64"]
+    assert await balance(server) == before - 2
+    err3, _, t3 = await call(server, "convert_journal", **{**args, "account_digits": 9})
+    assert not err3, t3
+    assert await balance(server) == before - 4  # different inputs are a different call
+
+
+async def test_duplicate_call_after_window_is_charged(server, monkeypatch):
+    monkeypatch.setattr(importlib.import_module("contabridge_mcp.billing"), "DEDUP_TTL", 0.0)
+    before = await balance(server)
+    for _ in range(2):
+        err, _, text = await call(server, "validate_journal", content=DIARIO)
+        assert not err, text
+    assert await balance(server) == before - 2 * server.PRICES["validate_journal"]
+
+
+async def test_retry_after_refunded_failure_is_billed_once(server):
+    b = server.billing
+    before = await balance(server)
+    inputs = {"content": "x"}
+    with pytest.raises(RuntimeError):
+        async with b.charge(3, "build_journal", inputs=inputs):
+            raise RuntimeError("tool body failed")
+    assert await balance(server) == before  # refunded
+    async with b.charge(3, "build_journal", inputs=inputs) as receipt:
+        assert not receipt.get("is_cached")
+    assert await balance(server) == before - 3
+    # A failing replay of a paid call does not refund the paid one.
+    with pytest.raises(RuntimeError):
+        async with b.charge(3, "build_journal", inputs=inputs) as receipt:
+            assert receipt.get("is_cached")
+            raise RuntimeError("retry failed")
+    assert await balance(server) == before - 3

@@ -178,7 +178,7 @@ async def convert_journal(ctx: Context, target_format: str, content: str = "", c
             raise journal.JournalError(f"target_format debe ser uno de {', '.join(formats.FORMATS)}")
         # Built before the debit: a file the target program would reject is never charged.
         out = _emit(entries, target_format, rep, opts, strict, fiscal_year or None)
-    async with billing.charge(PRICES["convert_journal"], "convert_journal", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["convert_journal"], "convert_journal", _headers(ctx), inputs=locals()) as receipt:
         pass
     return {**out, "source_format": src, "source_encoding": encoding,
             "billing": _note(receipt, PRICES["convert_journal"])}
@@ -203,7 +203,7 @@ async def validate_journal(ctx: Context, content: str = "", content_base64: str 
     with _user_errors():
         entries, src = await asyncio.to_thread(formats.read, text, source_format, rep, column_map, csv_delimiter,
                                                date_style)
-    async with billing.charge(PRICES["validate_journal"], "validate_journal", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["validate_journal"], "validate_journal", _headers(ctx), inputs=locals()) as receipt:
         issues = journal.validate(entries, fiscal_year or None, pgc=src in formats.SPANISH)
         out: dict[str, Any] = {"valid": not any(i["level"] == "error" for i in issues), "source_format": src,
                                "summary": journal.summary(entries), "issues": issues[:500],
@@ -292,7 +292,7 @@ async def bank_to_journal(ctx: Context, bank_account: str, target_format: str = 
             "date_style": date_style, "tax_rate": xero_tax_rate}
     with _user_errors():
         out = _emit(entries, target_format, rep, opts, True, None)
-    async with billing.charge(PRICES["bank_to_journal"], "bank_to_journal", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["bank_to_journal"], "bank_to_journal", _headers(ctx), inputs=locals()) as receipt:
         pass
     stats["unmatched_total"] = len(stats["unmatched"])
     stats["unmatched"] = stats["unmatched"][:200]
@@ -377,7 +377,7 @@ async def pdf_bank_to_journal(ctx: Context, content_base64: str, target_format: 
             stats["unmatched"] = stats["unmatched"][:200]
             out["bank"] = stats
     billing.client(_headers(ctx)).check()
-    async with billing.charge(PRICES["pdf_bank_to_journal"], "pdf_bank_to_journal", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["pdf_bank_to_journal"], "pdf_bank_to_journal", _headers(ctx), inputs=locals()) as receipt:
         pass
     return {**out, "statement": report, "source": {"type": "pdf"},
             "billing": _note(receipt, PRICES["pdf_bank_to_journal"])}
@@ -412,7 +412,7 @@ async def build_journal(ctx: Context, entries: list[dict[str, Any]], target_form
             "date_style": date_style, "tax_rate": xero_tax_rate}
     with _user_errors():
         out = _emit(parsed, target_format, rep, opts, True, fiscal_year or None)
-    async with billing.charge(PRICES["build_journal"], "build_journal", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["build_journal"], "build_journal", _headers(ctx), inputs=locals()) as receipt:
         pass
     return {**out, "billing": _note(receipt, PRICES["build_journal"])}
 
@@ -469,7 +469,7 @@ async def invoices_to_journal(ctx: Context, invoices: list[dict[str, Any]], targ
             "date_style": date_style, "tax_rate": xero_tax_rate}
     with _user_errors():
         out = _emit(entries, target_format, rep, opts, True, fiscal_year or None)
-    async with billing.charge(PRICES["invoices_to_journal"], "invoices_to_journal", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["invoices_to_journal"], "invoices_to_journal", _headers(ctx), inputs=locals()) as receipt:
         pass
     stats["vat_register"] = stats["vat_register"][:500]
     return {**out, "invoices": stats, "open_items": open_items[:2000],
@@ -495,7 +495,7 @@ async def bank_statement_csv(ctx: Context, target: str, content: str = "", conte
         csv_text, stats = intl.bank_statement(res, target, date_style, account)
         if not stats["movements"]:
             raise journal.JournalError("el extracto no contiene movimientos")
-    async with billing.charge(PRICES["bank_statement_csv"], "bank_statement_csv", _headers(ctx)) as receipt:
+    async with billing.charge(PRICES["bank_statement_csv"], "bank_statement_csv", _headers(ctx), inputs=locals()) as receipt:
         pass
     raw = ("﻿" + csv_text).encode("utf-8")
     return {"target": target, "filename": f"{target}_bank_statement.csv", "encoding": "utf-8-sig",
